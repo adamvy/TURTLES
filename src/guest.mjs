@@ -19,6 +19,12 @@ addEventListener('message', async event => {
     hostWorker.postMessage(message);
     return;
   }
+  if (message?.type === 'language' && ['t0', 'js', 'som'].includes(message.mode)) {
+    if (hostWorker) hostWorker.postMessage(message);
+    else if (guest) guest.write(`:${message.mode}\n`);
+    else if (starting && pendingInput.length < 16) pendingInput.push(`:${message.mode}\n`);
+    return;
+  }
   if (message?.type === 'input' && typeof message.text === 'string') {
     if (guest) guest.write(message.text);
     else if (starting && !hostWorker && pendingInput.length < 16) pendingInput.push(message.text);
@@ -30,12 +36,12 @@ addEventListener('message', async event => {
       hostWorker = new Worker(new URL('./host.js', import.meta.url));
       hostWorker.onmessage = event => { if (!lifetime.signal.aborted) send(event.data); };
       hostWorker.onerror = event => send({ type: 'error', message: event.message });
-      hostWorker.postMessage({ type: 'boot', mode: message.mode });
+      hostWorker.postMessage({ type: 'boot' });
       return;
     }
     if (message.runtime !== undefined && message.runtime !== 'arm') throw new Error('Unknown runtime');
     guest = await boot({
-      mode: message.mode, imageURL: message.imageURL, imageSha256: message.imageSha256,
+      imageURL: message.imageURL, imageSha256: message.imageSha256,
       signal: lifetime.signal,
       onData: output,
       onStatus: (state, message) => send({ type: 'status', state, message }),

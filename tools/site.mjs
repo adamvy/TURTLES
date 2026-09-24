@@ -19,29 +19,26 @@ const downloadBase = `https://github.com/${repository}/releases/${releaseTag ===
 const destination = resolve(root, 'dist'), releases = resolve(root, 'build/release');
 for (const path of [destination, releases]) { rmSync(path, {recursive: true, force: true}); mkdirSync(path, {recursive: true}); }
 for (const file of ['index.html', 'style.css', 'repl.mjs', 'isolation.js', 'coi-serviceworker.js',
-  'qemu.mjs', 'guest.html', 'guest.mjs', 'host.js', 't0.js', 'parsers.js', 'jsparser.js']) {
+  'qemu.mjs', 'guest.html', 'guest.mjs', 'host.js', 't0.js', 'parsers.js', 'jsparser.js', 'som.js']) {
   copyFileSync(resolve(root, 'src', file), resolve(destination, file));
 }
 for (const file of ['LICENSE', 'turtles.png']) copyFileSync(resolve(root, file), resolve(destination, file));
 copyFileSync(resolve(root, 'LICENSE'), resolve(releases, 'LICENSE'));
 writeFileSync(resolve(destination, '.nojekyll'), '');
-const images = {}, checksums = [`${hash(readFileSync(resolve(root, 'LICENSE')))}  LICENSE`];
-for (const mode of ['t0', 'js']) {
-  const formats = {};
-  for (const extension of ['elf', 'bin']) {
-    const filename = `turtles-${mode}.${extension}`;
-    const bytes = readFileSync(resolve(root, 'build', filename)), sha256 = hash(bytes);
-    const url = `images/${sha256}/${filename}`;
-    mkdirSync(dirname(resolve(destination, url)), {recursive: true});
-    writeFileSync(resolve(destination, url), bytes);
-    writeFileSync(resolve(releases, filename), bytes);
-    checksums.push(`${sha256}  ${filename}`);
-    formats[extension] = {url, sha256, bytes: bytes.length, downloadURL: `${downloadBase}/${filename}`};
-  }
-  images[mode] = {...formats.elf, raw: formats.bin};
+const formats = {}, checksums = [`${hash(readFileSync(resolve(root, 'LICENSE')))}  LICENSE`];
+for (const extension of ['elf', 'bin']) {
+  const filename = `turtles.${extension}`;
+  const bytes = readFileSync(resolve(root, 'build', filename)), sha256 = hash(bytes);
+  const url = `images/${sha256}/${filename}`;
+  mkdirSync(dirname(resolve(destination, url)), {recursive: true});
+  writeFileSync(resolve(destination, url), bytes);
+  writeFileSync(resolve(releases, filename), bytes);
+  checksums.push(`${sha256}  ${filename}`);
+  formats[extension] = {url, sha256, bytes: bytes.length, downloadURL: `${downloadBase}/${filename}`};
 }
-const manifest = {schema: 1, repository, revision, releaseTag, releaseURL,
-  machine: 'virt-8.2', architecture: 'aarch64', cpu: 'cortex-a53', ramMiB: 512, images};
+const manifest = {schema: 2, repository, revision, releaseTag, releaseURL,
+  machine: 'virt-8.2', architecture: 'aarch64', cpu: 'cortex-a53', ramMiB: 512,
+  languages: ['t0', 'js', 'som'], image: {...formats.elf, raw: formats.bin}};
 const json = JSON.stringify(manifest, null, 2) + '\n';
 for (const directory of [destination, releases]) writeFileSync(resolve(directory, 'latest.json'), json);
 checksums.push(`${hash(json)}  latest.json`);

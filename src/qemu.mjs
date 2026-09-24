@@ -78,8 +78,7 @@ async function sha256(bytes) {
   return [...digest].map(x => x.toString(16).padStart(2, '0')).join('');
 }
 
-export async function boot({ mode = 't0', imageURL, imageSha256, signal, onData = () => {}, onStatus = () => {}, onError = () => {}, onProgress }) {
-  if (!['t0', 'js'].includes(mode)) throw new Error('Unknown guest mode');
+export async function boot({ imageURL, imageSha256, signal, onData = () => {}, onStatus = () => {}, onError = () => {}, onProgress }) {
   if (!globalThis.crossOriginIsolated || typeof SharedArrayBuffer === 'undefined') {
     throw new Error('Browser QEMU needs cross-origin isolation (COOP/COEP headers) and shared WebAssembly memory.');
   }

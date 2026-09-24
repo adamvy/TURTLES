@@ -36,7 +36,7 @@ jobs:
             gh release download "$RELEASE_TAG" --dir existing
             diff -r build/release existing
           else
-            gh release create "$RELEASE_TAG" build/release/* --verify-tag --title "Turtles $RELEASE_TAG" --notes 'Raw T0 and JS-like AArch64 images for QEMU virt-8.2 / Cortex-A53. Boot commands and browser REPL: https://adamvy.github.io/TURTLES/'
+            gh release create "$RELEASE_TAG" build/release/* --verify-tag --title "Turtles $RELEASE_TAG" --notes 'One AArch64 Turtles image with T0, JS-like and SOM readers for QEMU virt-8.2 / Cortex-A53. Boot commands and browser REPL: https://adamvy.github.io/TURTLES/'
           fi
       - uses: actions/upload-pages-artifact@v3
         with:

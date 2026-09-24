@@ -13,6 +13,8 @@ _start:
     str xzr, [x0]
     adr x0, stringify_active
     str xzr, [x0]
+    adr x0, full_reader
+    str xzr, [x0]
     adr x0, repl_saved_sp
     mov x1, sp
     str x1, [x0]
@@ -22,14 +24,13 @@ _start:
     adr x0, boot_prelude
     bl t0_eval
     bl full_boot_check
-    mov x0, #BOOT_JS
-    cbz x0, full_boot_ready
-    adr x0, full_loading_message
-    bl puts
     adr x0, module_parsers
     bl t0_eval
     bl full_boot_check
     adr x0, module_jsparser
+    bl t0_eval
+    bl full_boot_check
+    adr x0, module_som
     bl t0_eval
     bl full_boot_check
 full_boot_ready:
@@ -65,21 +66,56 @@ full_repl_recover:
     str xzr, [x0]
     // User values remain as in upstream after a partial evaluation error.
 full_repl:
-    adr x0, full_prompt
+    adr x0, full_reader
+    ldr x1, [x0]
+    adr x0, full_prompt_t0
+    cbz x1, full_repl_prompt
+    adr x0, full_prompt_js
+    cmp x1, #1
+    b.eq full_repl_prompt
+    adr x0, full_prompt_som
+full_repl_prompt:
     bl puts
     bl read_source
     cbnz x1, full_input_overflow
-    mov x1, x0
+    mov x20, x0
+    cbnz x2, full_repl_source
+    // Exact terminal lines only: pasted text always reaches the reader.
+    adr x0, full_input_buffer
+    adr x1, full_command_t0
+    bl full_ascii_equal
+    cbnz x0, full_choose_t0
+    adr x0, full_input_buffer
+    adr x1, full_command_js
+    bl full_ascii_equal
+    cbnz x0, full_choose_js
+    adr x0, full_input_buffer
+    adr x1, full_command_som
+    bl full_ascii_equal
+    cbnz x0, full_choose_som
+    adr x0, full_input_buffer
+    adr x1, full_command_help
+    bl full_ascii_equal
+    cbnz x0, full_show_help
+full_repl_source:
+    mov x1, x20
     adr x0, full_input_buffer
     bl string_from_utf8
     mov x19, x22
-    mov x1, #BOOT_JS
-    cbnz x1, full_js_repl
+    adr x1, full_reader
+    ldr x1, [x1]
+    cbnz x1, full_language_repl
     bl t0_eval
     b full_repl_check_throw
-full_js_repl:
+full_language_repl:
     bl value_push
+    adr x0, full_reader
+    ldr x1, [x0]
     adr x0, js_eval_command
+    cmp x1, #1
+    b.eq full_language_eval
+    adr x0, som_eval_command
+full_language_eval:
     bl t0_eval
     cmp x22, x19
     b.ls full_repl_check_throw
@@ -92,6 +128,22 @@ full_repl_check_throw:
     cbz x0, full_repl
     adr x0, full_uncaught_message
     b runtime_error
+full_show_help:
+    adr x0, full_help_message
+    bl puts
+    b full_repl
+full_choose_t0:
+    mov x0, #0
+    b full_select_reader
+full_choose_js:
+    mov x0, #1
+    b full_select_reader
+full_choose_som:
+    mov x0, #2
+full_select_reader:
+    adr x1, full_reader
+    str x0, [x1]
+    b full_repl
 full_input_overflow:
     adr x0, full_input_message
     b runtime_error
@@ -104,9 +156,17 @@ full_boot_failed:
     adr x0, full_boot_failure_message
     b fatal_halt
 full_boot_banner:
-    .asciz "\r\nTURTLES / AArch64 bare metal\r\nNative T0 compiler + VM | binary64 | UTF-16 | no C\r\nMonotonic arena and heap: exhaustion HALTS until reboot.\r\nMultiline input: :paste, source lines, then :end (:cancel to discard).\r\n"
-full_loading_message:
-    .asciz "Loading T0 parser combinators and JS-like compiler...\r\n"
+    .asciz "\r\nTURTLES / AArch64 bare metal\r\nNative T0 compiler + VM | binary64 | UTF-16 | no C\r\nMonotonic arena and heap: exhaustion HALTS until reboot.\r\nReaders: :t0 :js :som | :help\r\nMultiline input: :paste, source lines, then :end (:cancel to discard).\r\n"
+full_ready_message: .asciz "Raw T0 REPL ready.\r\n"
+full_prompt_t0: .asciz "t0> "
+full_prompt_js: .asciz "js> "
+full_prompt_som: .asciz "som> "
+full_command_t0: .asciz ":t0"
+full_command_js: .asciz ":js"
+full_command_som: .asciz ":som"
+full_command_help: .asciz ":help"
+full_help_message:
+    .asciz "Readers: :t0 :js :som (preserve definitions and values).\r\nMultiline: :paste, source lines, :end; :cancel discards.\r\nT0 uses print; JS and SOM display the newest result.\r\nIn T0, reset clears the environment and returns to t0>.\r\n"
 full_input_message:
     .asciz "input exceeds 65535 UTF8 bytes"
 full_uncaught_message:
@@ -116,5 +176,6 @@ full_boot_failure_message:
 .align 3
 full_boot_complete:
     .quad 0
+full_reader: .quad 0
 full_input_buffer:
     .space 65536

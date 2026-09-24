@@ -1,4 +1,4 @@
-// Platform support for the complete T0 engine. See ABI.md.
+// Platform support for the T0 engine.
 uart_putc:
     mov x1, #0x09000000
 full_uart_tx:
@@ -158,11 +158,14 @@ full_read_end:
 // Multiline collection happens in the guest. The source is evaluated once,
 // preserving line breaks for comments, strings, input_ and captured positions.
 // :paste / :end are terminal directives, not T0 compiler words.
+// Returns x0 byte length, x1 overflow, x2 whether source came from :paste.
 read_source:
-    stp x19, x20, [sp, #-64]!
+    stp x19, x20, [sp, #-80]!
     stp x21, x25, [sp, #16]
     stp x26, x27, [sp, #32]
-    stp x29, x30, [sp, #48]
+    stp x28, xzr, [sp, #48]
+    stp x29, x30, [sp, #64]
+    mov x28, #0
     adr x19, full_input_buffer
     mov x0, x19
     mov x1, #65536
@@ -174,6 +177,7 @@ read_source:
     adr x1, full_paste_begin
     bl full_ascii_equal
     cbz x0, full_source_done
+    mov x28, #1
     mov x20, #0
 full_source_more:
     adr x0, full_paste_prompt
@@ -236,10 +240,12 @@ full_source_end:
 full_source_done:
     mov x0, x20
     mov x1, x21
-    ldp x29, x30, [sp, #48]
+    mov x2, x28
+    ldp x29, x30, [sp, #64]
+    ldp x28, xzr, [sp, #48]
     ldp x26, x27, [sp, #32]
     ldp x21, x25, [sp, #16]
-    ldp x19, x20, [sp], #64
+    ldp x19, x20, [sp], #80
     ret
 full_ascii_equal:
     ldrb w2, [x0]
