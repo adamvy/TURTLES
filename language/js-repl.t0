@@ -1,0 +1,30 @@
+// REPL adapters for the upstream-derived FormulaCompiler.
+// jsCompile: source -> compiled T0 string, or false for invalid/incomplete input.
+// Append a newline so a final // comment has its required line terminator.
+{ source let
+  source nl + :text
+  FormulaCompiler :compiler
+  false :result
+|
+  text 0 nil compiler .ignore PStream
+  [ compiler .ignore opt compiler .start ] 1 seq1 () :result
+  result
+    { | result .pos text len =
+      { | [ 'block result .value ] false __js$jsValidStatement
+        { | result .value false __js$jsEmitStatements }
+        { | false }
+        ifelse }
+      { | false }
+      ifelse }
+    { | false }
+  ifelse
+} ::jsCompile
+
+// jsEval keeps T0's stack effects: expression statements can leave more than
+// one value. The interactive frontend can display the newest top value.
+{ source let source jsCompile :code |
+  code string?
+    { | code eval }
+    { | " Error: invalid JS-like source" print }
+  ifelse
+} ::jsEval

@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Turtles · ARM console</title>
+  <style nonce="__CONSOLE_NONCE__">
+    :root { color-scheme: dark; --bg: #0b1717; --panel: #102424; --line: #29413e; --text: #e4f0e7; --muted: #9ab2a6; --green: #a2e4b8; --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 system-ui, -apple-system, sans-serif; }
+    main { max-width: 1100px; margin: 0 auto; padding: 42px 30px 32px; }
+    header { display: flex; justify-content: space-between; align-items: start; gap: 24px; margin-bottom: 26px; }
+    .eyebrow { color: var(--green); font: 12px var(--mono); letter-spacing: .15em; text-transform: uppercase; }
+    h1 { font-size: 36px; font-weight: 550; letter-spacing: -.04em; margin: 7px 0 6px; }
+    .description { margin: 0; color: var(--muted); max-width: 640px; }
+    .architecture { padding: 7px 12px; border: 1px solid var(--line); border-radius: 99px; white-space: nowrap; color: var(--green); font: 12px var(--mono); margin-top: 8px; }
+    .terminal { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #091312; box-shadow: 0 12px 45px #0003; }
+    .terminal-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 17px; background: var(--panel); border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    .status { display: flex; gap: 9px; align-items: center; }
+    .dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: #d5b875; }
+    .dot.running { background: var(--green); box-shadow: 0 0 10px #a2e4b833; }
+    .dot.failed, .dot.exited, .dot.halted { background: #e5a395; }
+    .uart-label { font: 11px var(--mono); letter-spacing: .04em; }
+    pre { font-family: var(--mono); }
+    #uart { margin: 0; padding: 23px; min-height: 300px; height: 44vh; max-height: 580px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.65; color: #c0eecb; tab-size: 4; }
+    #uart:focus-visible { outline: 2px solid var(--green); outline-offset: -3px; }
+    #truncated { margin: 0; padding: 7px 22px; color: var(--muted); border-top: 1px solid var(--line); font-size: 12px; }
+    form { display: flex; align-items: center; gap: 10px; padding: 14px; border-top: 1px solid var(--line); background: #0f1e1c; }
+    .prompt { padding-left: 7px; color: var(--green); font: 15px var(--mono); }
+    textarea { resize: vertical; min-height: 72px; max-height: 300px; min-width: 0; width: 100%; background: transparent; border: 0; color: var(--text); padding: 9px 0; font: 14px var(--mono); outline: 0; }
+    textarea::placeholder { color: #71877b; }
+    form:focus-within { box-shadow: inset 0 0 0 1px #7bad87; }
+    button { font: inherit; cursor: pointer; border-radius: 7px; border: 1px solid var(--line); padding: 8px 13px; color: var(--text); background: var(--panel); }
+    button:hover { border-color: #7dad8d; background: #1b3530; }
+    button:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+    select { font: inherit; border-radius: 7px; border: 1px solid var(--line); color: var(--text); background: var(--panel); padding: 9px 12px; }
+    .mode-bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
+    .mode-bar label { font-size: 13px; color: var(--green); }
+    #dialect { margin: 0; flex: 1; min-width: 220px; color: var(--muted); font-size: 12px; }
+    button:disabled { cursor: default; opacity: .45; }
+    #run { background: var(--green); border-color: var(--green); color: #10271b; font-weight: 650; min-width: 75px; }
+    #run:hover:enabled { background: #b9f1ca; }
+    .below { display: flex; justify-content: space-between; align-items: start; gap: 22px; margin-top: 20px; }
+    .samples { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
+    .sample-caption { width: 100%; font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+    .samples button { font-size: 12px; }
+    .reset { text-align: right; flex: 0 0 auto; }
+    .reset p { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
+    #notice { min-height: 22px; margin: 14px 0 0; color: #e5b498; font-size: 13px; }
+    details { color: var(--muted); font-size: 12px; }
+    #diagnostic { white-space: pre-wrap; overflow-wrap: anywhere; color: #e5b498; }
+    footer { margin-top: 22px; color: #819b8e; font-size: 12px; border-top: 1px solid #213733; padding-top: 17px; }
+    @media (max-width: 600px) { main { padding: 25px 15px; } h1 { font-size: 30px; } header { gap: 8px; } .architecture { display: none; } .below { flex-direction: column; } .reset { text-align: left; } #uart { padding: 16px; font-size: 12px; } .uart-label { display: none; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <div class="eyebrow">Turtles / bare metal</div>
+        <h1>A language, all the way down.</h1>
+        <p class="description">Two prompts on bare-metal ARM: raw T0 and a JavaScript-like language built in T0. This is the live QEMU serial console.</p>
+      </div>
+      <div class="architecture">AARCH64 · NO GUEST OS</div>
+    </header>
+    <div class="mode-bar">
+      <label for="mode">Language</label>
+      <select id="mode" disabled><option value="t0">Raw T0</option><option value="js">JavaScript-like</option></select>
+      <p id="dialect">T0 is a stack language with lexical closures, runtime definitions, and eval.</p>
+    </div>
+    <section class="terminal" aria-label="Live QEMU UART console">
+      <div class="terminal-bar">
+        <div class="status" role="status"><span id="dot" class="dot"></span><span id="status">Connecting to the UART bridge…</span></div>
+        <span class="uart-label">PL011 / SERIAL 0</span>
+      </div>
+      <pre id="uart" aria-label="Actual guest UART output" tabindex="0"></pre>
+      <p id="truncated" hidden>Earlier UART output has been omitted from the bounded replay buffer.</p>
+      <form id="command-form" autocomplete="off">
+        <span id="prompt" class="prompt" aria-hidden="true">t0&gt;</span>
+        <textarea id="source" name="source" rows="3" aria-label="T0 source" placeholder="1 2 + print" spellcheck="false" autocapitalize="off" autocomplete="off" disabled></textarea>
+        <button id="run" type="submit" disabled>Run</button>
+      </form>
+    </section>
+    <div class="below">
+      <div class="samples" aria-label="Example programs">
+        <span class="sample-caption">Load an example, then Run · ⌘Enter / Ctrl+Enter</span>
+        <span id="example-buttons" class="samples"></span>
+      </div>
+      <div class="reset">
+        <button id="reset" type="button" disabled>Reboot QEMU</button>
+        <p>Starts a fresh machine. Clears all guest state.</p>
+      </div>
+    </div>
+    <p id="notice" role="alert"></p>
+    <details id="diagnostics" hidden><summary>QEMU diagnostics</summary><pre id="diagnostic"></pre></details>
+    <footer>JavaScript builds the ARM images. The guest executes your code, including the JS-like parser. Definitions persist between runs. Multiline input uses the native :paste / :end protocol. Switching language reboots the machine.</footer>
+  </main>
+  <script nonce="__CONSOLE_NONCE__">
+    const token = __CONSOLE_TOKEN_JSON__;
+    const uart = document.getElementById('uart');
+    const source = document.getElementById('source');
+    const run = document.getElementById('run');
+    const reset = document.getElementById('reset');
+    const modeSelect = document.getElementById('mode');
+    const statusText = document.getElementById('status');
+    const notice = document.getElementById('notice');
+    const dot = document.getElementById('dot');
+    const examples = {
+      t0: [
+        ['Arithmetic', '1 2 + print'],
+        ['Define a word', '{ x | x x * } ::square\n9 square print'],
+        ['Mutable closure', '1 { count | { | count 1 + :count count } } () :counter\ncounter () print\ncounter () print'],
+        ['Guest-side eval', '" 6 7 *" eval print'],
+        ['Map an array', '[ 1 2 3 ] { x | x x * } map print'],
+      ],
+      js: [
+        ['Arithmetic', '0.1 + 0.2'],
+        ['Persistent variable', 'answer = 40;\nanswer + 2'],
+        ['Loop', 'i = 0; total = 0;\nwhile (i < 4) { total = total + i; i++; };\ntotal'],
+        ['Conditional', 'if (2 > 1) { 1 + 2 } else { 3 * 4 }'],
+        ['Nested array', '[1, [2, 3], true][1][0]'],
+      ],
+    };
+    let mode = '', running = false, connected = false, pending = false, restarting = false;
+    const endpoint = path => `${path}?token=${encodeURIComponent(token)}`;
+    function controls() {
+      source.disabled = !running || !connected || restarting;
+      run.disabled = !running || !connected || pending || restarting;
+      reset.disabled = !connected || pending || restarting;
+      modeSelect.disabled = !connected || pending || restarting;
+    }
+    function displayMode(nextMode) {
+      modeSelect.value = nextMode;
+      if (mode === nextMode) return;
+      mode = nextMode;
+      source.value = '';
+      source.placeholder = mode === 'js' ? '0.1 + 0.2' : '1 2 + print';
+      source.setAttribute('aria-label', mode === 'js' ? 'JavaScript-like source' : 'T0 source');
+      document.getElementById('prompt').textContent = `${mode}>`;
+      document.getElementById('dialect').textContent = mode === 'js'
+        ? 'A small JS-like dialect: expressions, arrays, assignments, if, and while. It is not full JavaScript; functions, objects, strings, and browser APIs are not part of this frontend.'
+        : 'T0 is a stack language with lexical closures, runtime definitions, and eval. Use print to display a value.';
+      const buttons = document.getElementById('example-buttons');
+      buttons.replaceChildren();
+      for (const [label, text] of examples[mode]) {
+        const button = document.createElement('button');
+        button.type = 'button'; button.textContent = label;
+        button.addEventListener('click', () => { source.value = text; if (!source.disabled) source.focus(); });
+        buttons.append(button);
+      }
+    }
+    function renderOutput(text, replace = false) {
+      const follow = uart.scrollHeight - uart.scrollTop - uart.clientHeight < 80;
+      let result = replace ? text : uart.textContent + text;
+      if (result.length > 262144) {
+        result = result.slice(-262144);
+        document.getElementById('truncated').hidden = false;
+      }
+      uart.textContent = result;
+      if (follow || replace) uart.scrollTop = uart.scrollHeight;
+    }
+    displayMode('t0');
+    const events = new EventSource(endpoint('/events'));
+    events.addEventListener('open', () => { connected = true; controls(); });
+    events.addEventListener('snapshot', event => {
+      const data = JSON.parse(event.data);
+      renderOutput(data.text, true);
+      document.getElementById('truncated').hidden = !data.truncated;
+    });
+    events.addEventListener('uart', event => renderOutput(JSON.parse(event.data).text));
+    events.addEventListener('status', event => {
+      const data = JSON.parse(event.data);
+      displayMode(data.mode);
+      running = data.state === 'running';
+      restarting = ['starting', 'booting', 'restarting', 'stopping'].includes(data.state);
+      statusText.textContent = data.message;
+      dot.className = `dot ${data.state}`;
+      controls();
+    });
+    events.addEventListener('diagnostic', event => {
+      const data = JSON.parse(event.data);
+      document.getElementById('diagnostics').hidden = !data.text;
+      document.getElementById('diagnostic').textContent = data.text;
+    });
+    events.addEventListener('error', () => {
+      connected = false;
+      statusText.textContent = 'UART bridge disconnected · reconnecting…';
+      dot.className = 'dot'; controls();
+    });
+    async function post(path, text) {
+      const result = await fetch(endpoint(path), { method: 'POST', headers: { 'Content-Type': 'text/plain; charset=utf-8' }, body: text });
+      if (!result.ok) throw Error(await result.text());
+    }
+    async function send(text) {
+      if (!running || !connected || pending || restarting) return;
+      if (new TextEncoder().encode(text).length > 65535) { notice.textContent = 'Enter at most 65,535 UTF-8 bytes.'; return; }
+      pending = true; controls(); notice.textContent = '';
+      try { await post('/input', text); source.value = ''; }
+      catch (error) { notice.textContent = error.message; }
+      finally { pending = false; controls(); if (!source.disabled) source.focus(); }
+    }
+    async function reboot(nextMode) {
+      if (!connected || pending || restarting) return;
+      pending = true; controls(); notice.textContent = '';
+      try { await post('/reboot', nextMode); }
+      catch (error) { notice.textContent = error.message; modeSelect.value = mode; }
+      finally { pending = false; controls(); }
+    }
+    document.getElementById('command-form').addEventListener('submit', event => { event.preventDefault(); send(source.value); });
+    source.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); send(source.value); }
+    });
+    reset.addEventListener('click', () => reboot(mode));
+    modeSelect.addEventListener('change', () => reboot(modeSelect.value));
+    window.addEventListener('pagehide', () => events.close());
+  </script>
+</body>
+</html>

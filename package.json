@@ -1,0 +1,28 @@
+{
+  "name": "turtles-bare-metal",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "A JavaScript-built, no-C AArch64 T0 environment for QEMU",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "build:t0": "node tools/build.mjs --mode t0",
+    "build:js": "node tools/build.mjs --mode js",
+    "start": "node tools/run.mjs",
+    "start:js": "node tools/run.mjs --mode js",
+    "console": "node tools/console.mjs",
+    "console:js": "node tools/console.mjs --mode js",
+    "test": "node --test test/assembler.test.mjs test/parser-reference.test.mjs && node test/reference.mjs --extended && node tools/build.mjs && node test/boot-images.mjs && node test/core-full.mjs && node test/js-adapter-full.mjs && node test/full-qemu.mjs && node test/functions-native.mjs && npm run test:numbers",
+    "test:numbers": "NUMBER_POW=1 NUMBER_RANDOM=2000 node test/numbers.mjs",
+    "test:guest": "node tools/build.mjs && node test/full-qemu.mjs",
+    "test:boot": "node tools/build.mjs && node test/boot-images.mjs",
+    "build:web": "node tools/build-web.mjs",
+    "preview": "node tools/serve-web.mjs --root dist",
+    "fetch:engine": "node tools/browser-engine.mjs",
+    "test:wasm": "node test/browser-engine.mjs",
+    "test:functions": "node tools/build.mjs && node test/functions-native.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

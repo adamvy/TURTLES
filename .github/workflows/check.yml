@@ -1,0 +1,31 @@
+name: Verify ARM images
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: sudo apt-get update && sudo apt-get install -y qemu-system-arm clang
+      - run: npm test
+      - run: node tools/browser-engine.mjs && npm run test:wasm
+      - run: npm run build:web && node test/site-package.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: arm-images-and-validation
+          path: |
+            build/*.elf
+            build/*.bin
+            build/*.json
+            build/*transcript*
+            build/release/
+          retention-days: 30
