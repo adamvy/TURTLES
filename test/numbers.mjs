@@ -2,6 +2,8 @@
 // Isolated numeric-library machine-code oracle; JavaScript only builds the image.
 import fs from 'node:fs';
 import {spawn} from 'node:child_process';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {assemble} from '../tools/assembler.mjs';
 import {elf64} from '../tools/image.mjs';
 const bits=n=>{const b=Buffer.alloc(8);b.writeDoubleLE(n);return b.readBigUInt64LE().toString(16).padStart(16,'0');};
@@ -179,13 +181,21 @@ num_test_done:
 `;
 const source=platform+fs.readFileSync(new URL('../runtime/full/numbers.s',import.meta.url),'utf8')+data;
 const base=0x40200000;const {buffer,symbols}=assemble(source,{base});
-fs.mkdirSync('/private/tmp/turtles-numbers',{recursive:true});
-fs.writeFileSync('/private/tmp/turtles-numbers/numbers.elf',elf64(buffer,base,symbols.get('_start')));
-fs.writeFileSync('/private/tmp/turtles-numbers/numbers.s',source);
-const child=spawn(process.env.QEMU_BINARY||process.env.QEMU||'qemu-system-aarch64',['-machine','virt-8.2','-cpu','cortex-a53','-m','512M','-display','none','-monitor','none','-serial','stdio','-device','loader,file=/private/tmp/turtles-numbers/numbers.elf,cpu-num=0']);
-let output='';let stderr='';const timeout=setTimeout(()=>{child.kill();console.error('Timeout',output.slice(-1000),stderr);process.exitCode=1;},60000);
-child.stdout.on('data',b=>{output+=b;if(output.includes('DONE\n'))child.kill();});child.stderr.on('data',b=>stderr+=b);
-await new Promise(resolve=>child.on('exit',resolve));clearTimeout(timeout);
+const scratch=fs.mkdtempSync(join(tmpdir(),'turtles-numbers-'));
+const imagePath=join(scratch,'numbers.elf');
+let output='',stderr='',child,timeout;
+try {
+ fs.writeFileSync(imagePath,elf64(buffer,base,symbols.get('_start')));
+ fs.writeFileSync(join(scratch,'numbers.s'),source);
+ child=spawn(process.env.QEMU_BINARY||process.env.QEMU||'qemu-system-aarch64',['-machine','virt-8.2','-cpu','cortex-a53','-m','512M','-display','none','-monitor','none','-serial','stdio','-device',`loader,file=${imagePath.replaceAll(',',',,')},cpu-num=0`]);
+ timeout=setTimeout(()=>{child.kill();console.error('Timeout',output.slice(-1000),stderr);process.exitCode=1;},60000);
+ child.stdout.on('data',b=>{output+=b;if(output.includes('DONE\n'))child.kill();});child.stderr.on('data',b=>stderr+=b);
+ await new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',resolve);});
+} finally {
+ clearTimeout(timeout);
+ if(child&&child.exitCode===null&&child.signalCode===null)child.kill();
+ fs.rmSync(scratch,{recursive:true,force:true});
+}
 if(!output.includes('DONE\n'))throw Error('Numeric guest did not finish: '+output.slice(-1000)+' '+stderr);
 const lines=output.trim().split('\n').filter(x=>x!=='DONE');let failed=0,powDifferences=0;
 for(let i=0;i<cases.length;i++){

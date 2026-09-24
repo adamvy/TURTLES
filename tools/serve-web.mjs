@@ -4,20 +4,25 @@ import {createServer} from 'node:http';
 import {createReadStream} from 'node:fs';
 import {stat} from 'node:fs/promises';
 import {resolve,extname,sep} from 'node:path';
-let port=63820, directory=resolve('web'), build=false;
+let port=63820, directory=resolve('web'), build=false, pages=false;
 const args=process.argv.slice(2);
 for(let i=0;i<args.length;i++) {
   if(args[i]==='--port') port=Number(args[++i]);
   else if(args[i]==='--root') directory=resolve(args[++i]);
   else if(args[i]==='--build') build=true;
-  else throw Error('Usage: node tools/serve-web.mjs [--root web|dist] [--port 63820] [--build]');
+  else if(args[i]==='--pages') pages=true;
+  else throw Error('Usage: node tools/serve-web.mjs [--root web|dist] [--port 63820] [--build] [--pages]');
 }
 if(!Number.isInteger(port)||port<0||port>65535)throw Error('Invalid port');
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.wasm':'application/wasm','.svg':'image/svg+xml','.png':'image/png','.txt':'text/plain; charset=utf-8','.md':'text/plain; charset=utf-8'};
 const server=createServer(async(req,res)=>{
-  res.setHeader('Cross-Origin-Opener-Policy','same-origin');
-  res.setHeader('Cross-Origin-Embedder-Policy','require-corp');
-  res.setHeader('Cross-Origin-Resource-Policy','same-origin');
+  // --pages models a static host such as GitHub Pages: the site's service
+  // worker, rather than the HTTP server, must establish browser isolation.
+  if(!pages) {
+    res.setHeader('Cross-Origin-Opener-Policy','same-origin');
+    res.setHeader('Cross-Origin-Embedder-Policy','require-corp');
+    res.setHeader('Cross-Origin-Resource-Policy','same-origin');
+  }
   res.setHeader('X-Content-Type-Options','nosniff');
   res.setHeader('Cache-Control','no-cache');
   if(!['GET','HEAD'].includes(req.method)){res.writeHead(405);res.end();return;}
@@ -36,5 +41,5 @@ const server=createServer(async(req,res)=>{
     createReadStream(path).on('error',()=>res.destroy()).pipe(res);
   } catch {res.writeHead(404);res.end('Not found');}
 });
-server.listen(port,'127.0.0.1',()=>console.log(`Browser Turtles preview: http://127.0.0.1:${server.address().port}/ (${directory})`));
+server.listen(port,'127.0.0.1',()=>console.log(`Browser Turtles preview: http://127.0.0.1:${server.address().port}/ (${directory}; ${pages ? 'Pages simulation, isolation via service worker' : 'isolation headers enabled'})`));
 for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>{server.close();server.closeAllConnections();});

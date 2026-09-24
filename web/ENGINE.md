@@ -39,6 +39,11 @@ The development server sends `Cross-Origin-Opener-Policy: same-origin` and
 isolation (the site's service worker provides it when the hosting provider does
 not allow those headers). No browser protection needs to be disabled.
 
+To test the static-host path locally, build the site and run
+`node tools/serve-web.mjs --root dist --port 63822 --pages`. This mode deliberately
+omits the HTTP isolation headers. On a fresh origin, the page must install its
+service worker and reload before browser QEMU can boot.
+
 Each boot lives in a disposable same-origin iframe. Removing it and creating a
 new one restarts the machine and releases its worker context. The PTY adapter
 passes UTF-8 bytes to the guest's PL011 UART; it does not interpret source code.
