@@ -1,0 +1,173 @@
+const $ = selector => document.querySelector(selector);
+const modes = [...document.querySelectorAll('.mode')];
+const examples = {
+  js: [
+    ['Arithmetic', '1 + 2 * 3'],
+    ['Functions', 'function square(x) { return x * x; }\nsquare(9)'],
+    ['Closures', 'function counter(start) {\n  let n = start;\n  return function() { n = n + 1; return n; };\n}\nlet next = counter(40);\n[next(), next()]'],
+    ['Recursion', 'function factorial(n) {\n  if (n <= 1) { return 1; }\n  return n * factorial(n - 1);\n}\nfactorial(6)'],
+    ['Arrays', 'let values = [2, 3, 5];\nvalues[0] * values[1] + values[2]'],
+  ],
+  t0: [
+    ['Arithmetic', '1 2 3 * + print'],
+    ['Closures', '{ n | { x | n x + } } ::adder\n10 adder :add10\n7 add10 () print'],
+    ['Arrays', '[ 2 3 5 ] 1 @ print'],
+    ['Build a word', '{ x | x x * } ::square\n9 square print'],
+    ['Compiler', '{ | i[ 40 2 + emit ] } () print'],
+  ],
+};
+let manifest, bootImage, selectedMode = 'js', runningMode, frame, booting = false, ready = false;
+let tail = '', inputPending = false, haltedNotice = false;
+const maxOutput = 256 * 1024;
+
+function notice(message = '') { $('#notice').textContent = message; }
+function status(message, state = '') {
+  $('#status').textContent = message;
+  $('#status-dot').className = state;
+}
+function controls() {
+  $('#boot').disabled = !manifest;
+  $('#boot').textContent = frame ? 'Reboot Turtles ↗' : 'Boot Turtles ↗';
+  $('#power').disabled = !frame;
+  $('#source').disabled = !ready;
+  $('#run').disabled = !ready || inputPending;
+}
+function selectMode(mode) {
+  selectedMode = mode;
+  for (const button of modes) {
+    const selected = button.dataset.mode === mode;
+    button.classList.toggle('selected', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  }
+  $('#input-label').textContent = mode === 'js' ? 'JS-like source' : 'T0 source';
+  $('#prompt').textContent = `${mode}>`;
+  $('#source').value = examples[mode][mode === 'js' ? 1 : 0][1];
+  $('#examples').replaceChildren(...examples[mode].map(([label, source]) => {
+    const button = document.createElement('button');
+    button.type = 'button'; button.textContent = label;
+    button.addEventListener('click', () => { $('#source').value = source; if (ready) $('#source').focus(); });
+    return button;
+  }));
+  $('#language-note').textContent = mode === 'js'
+    ? 'The JS-like compiler runs in T0: functions, lexical closures, recursion, expressions, arrays and control flow. This is an experimental dialect, not full ECMAScript. Locals are function-scoped; no const, objects or classes.'
+    : 'T0 is Kevin Greer’s stack language. Definitions and compiler extensions stay in the guest until reboot. Use print to display a value; reset restarts the environment.';
+}
+function stop() {
+  // Removing the complete browsing context also terminates its Wasm workers.
+  frame?.contentWindow?.postMessage({type: 'stop'}, location.origin);
+  frame?.remove(); frame = undefined; booting = ready = inputPending = false;
+  $('#progress-wrap').hidden = true;
+  controls();
+}
+function boot() {
+  if (!manifest) return;
+  stop(); notice();
+  if (!crossOriginIsolated || typeof SharedArrayBuffer === 'undefined') {
+    notice('This browser has not enabled shared WebAssembly memory. Allow this site’s service worker and reload in desktop Chrome.');
+    status('Browser setup required', 'error'); return;
+  }
+  runningMode = selectedMode; booting = true; tail = '';
+  bootImage = {...manifest.images[runningMode]}; haltedNotice = false;
+  showRelease(manifest);
+  $('#uart').textContent = ''; $('#uart').hidden = false; $('#welcome').hidden = true;
+  status('Downloading the emulator', 'loading');
+  $('#progress-wrap').hidden = false; $('#progress').removeAttribute('value');
+  $('#progress-label').textContent = 'Preparing a fresh machine…';
+  frame = document.createElement('iframe');
+  frame.title = 'Turtles ARM machine';
+  frame.src = './guest.html';
+  $('#guest-container').append(frame);
+  controls();
+}
+function appendUART(text) {
+  const uart = $('#uart');
+  uart.textContent = (uart.textContent + text.replace(/\r/g, '')).slice(-maxOutput);
+  uart.scrollTop = uart.scrollHeight;
+  tail = (tail + text).slice(-512);
+  if (/(?:^|[\r\n])HALTED: (?:value heap exhausted|compiler\/frame arena exhausted|data stack exhausted|native call stack exhausted|initialization failed)[^\r\n]*\r?\n$/.test(tail)) {
+    ready = false; inputPending = false; booting = false;
+    haltedNotice = true;
+    status('Guest halted · reboot to start again', 'error');
+    notice('The guest halted. Reboot starts a fresh machine and clears its memory.');
+  } else if (new RegExp(`(?:^|[\r\n])${runningMode}> $`).test(tail)) {
+    ready = true; booting = false; inputPending = false;
+    if (haltedNotice) { notice(); haltedNotice = false; }
+    status(`${runningMode === 'js' ? 'JS-like' : 'Raw T0'} running in your browser`, 'running');
+    $('#progress-wrap').hidden = true;
+  }
+  controls();
+}
+addEventListener('message', event => {
+  if (!frame || event.source !== frame.contentWindow || event.origin !== location.origin) return;
+  const message = event.data;
+  if (message?.type === 'ready') {
+    frame.contentWindow.postMessage({type: 'boot', mode: runningMode,
+      imageURL: new URL(bootImage.url, location.href).href, imageSha256: bootImage.sha256}, location.origin);
+  } else if (message?.type === 'uart' && typeof message.text === 'string') appendUART(message.text);
+  else if (message?.type === 'status') {
+    if (message.state === 'stopped') {
+      stop(); status(message.message); notice('The emulator stopped. Boot starts a fresh machine.');
+    } else if (!ready) status(message.message, 'loading');
+  } else if (message?.type === 'progress') {
+    if (message.total) { $('#progress').max = message.total; $('#progress').value = message.loaded; }
+    $('#progress-label').textContent = `${(message.loaded / 1e6).toFixed(1)} MB${message.total ? ` / ${(message.total / 1e6).toFixed(1)} MB` : ''} · downloaded on demand`;
+  } else if (message?.type === 'error') {
+    const started = !booting;
+    stop(); status(started ? 'The browser emulator stopped' : 'Could not start the machine', 'error');
+    notice(`${message.message} Try rebooting in desktop Chrome with enough free memory.`);
+  }
+});
+$('#program-form').addEventListener('submit', event => {
+  event.preventDefault(); if (!frame || !ready || inputPending) return;
+  const source = $('#source').value.replace(/\r\n?/g, '\n');
+  if (!source.trim()) return;
+  if (new TextEncoder().encode(source + '\n').length > 65535) return notice('This REPL accepts up to 65,535 UTF-8 bytes per submission.');
+  if (/^:(?:end|cancel)\s*$/m.test(source) || /[\x00-\x08\x0b-\x1f\x7f]/.test(source)) return notice('Remove control characters or standalone :end / :cancel lines from the source.');
+  notice(); inputPending = true; tail = ''; controls();
+  status('Evaluating inside the guest…', 'loading');
+  frame.contentWindow.postMessage({type: 'input', text: `:paste\n${source}${source.endsWith('\n') ? '' : '\n'}:end\n`}, location.origin);
+});
+$('#source').addEventListener('keydown', event => {
+  if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); $('#program-form').requestSubmit(); }
+});
+for (const button of modes) button.addEventListener('click', () => {
+  if (selectedMode === button.dataset.mode) return;
+  const active = !!frame; selectMode(button.dataset.mode); if (active) boot();
+});
+$('#boot').addEventListener('click', boot);
+$('#power').addEventListener('click', () => { stop(); status('Powered off'); notice('Machine stopped. Boot starts a fresh session.'); });
+
+async function latest() {
+  const response = await fetch('./latest.json', {cache: 'no-store'});
+  if (!response.ok) throw Error(`Could not load the release manifest (${response.status}).`);
+  const data = await response.json();
+  if (data.schema !== 1 || data.machine !== 'virt-8.2' || !data.images?.js || !data.images?.t0) throw Error('Unsupported release manifest. Reload to update the site.');
+  for (const mode of ['js', 't0']) {
+    const image = data.images[mode];
+    if (!/^[a-f0-9]{64}$/.test(image.sha256) || new URL(image.url, location.href).origin !== location.origin) throw Error('Invalid image manifest.');
+  }
+  return data;
+}
+function showRelease(data) {
+  $('#build-label').textContent = `${data.releaseTag} · ${data.revision.slice(0, 7)}`;
+  $('#download-t0').href = data.images.t0.downloadURL;
+  $('#download-js').href = data.images.js.downloadURL;
+  $('#release').href = data.releaseURL;
+}
+$('#check-update').addEventListener('click', async () => {
+  try {
+    const data = await latest();
+    const changed = data.images.js.sha256 !== manifest?.images.js.sha256 || data.images.t0.sha256 !== manifest?.images.t0.sha256;
+    manifest = data;
+    if (!frame) showRelease(data);
+    notice(changed ? `New image ${data.releaseTag} is ready. Reboot to load it; the current machine stays as it is.` : `You have the latest published image (${data.releaseTag}).`);
+    controls();
+  } catch (error) { notice(error.message); }
+});
+selectMode('js');
+try {
+  manifest = await latest(); showRelease(manifest);
+  status('Ready to boot');
+  $('#download-note').textContent = 'First boot downloads ~58 MB. Runs locally.';
+  controls();
+} catch (error) { status('Release unavailable', 'error'); notice(error.message); }

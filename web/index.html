@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Kevin Greer's TURTLES language environment, booting from an ARM image inside your browser. Try raw T0 or its self-hosted JS-like compiler.">
+  <meta name="theme-color" content="#102721">
+  <title>TURTLES · Down to the metal</title>
+  <link rel="icon" href="./mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./style.css">
+  <script src="./isolation.js"></script>
+  <script src="./coi-serviceworker.js"></script>
+  <script type="module" src="./app.mjs"></script>
+</head>
+<body>
+  <main>
+    <nav aria-label="Project"><a class="brand" href="./"><img src="./mark.svg" alt="" width="27" height="27"> TURTLES</a><a href="https://github.com/adamvy/TURTLES">Source <span aria-hidden="true">↗</span></a></nav>
+    <header>
+      <p class="eyebrow">A language-building environment, on ARM</p>
+      <h1>Down to the metal.<br><span>Inside your browser.</span></h1>
+      <p class="intro"><a href="https://github.com/kgrgreer/TURTLES">Kevin Greer’s TURTLES</a>, booting from a real ARM machine-code image. QEMU runs in this tab. The language runs in the emulated machine.</p>
+      <div class="facts" aria-label="Platform"><span>AArch64</span><span>No guest operating system</span><span>Compiler written in T0</span></div>
+    </header>
+
+    <section class="workbench" aria-label="Turtles machine">
+      <div class="launch-panel">
+        <div><p class="eyebrow">01 / Choose your language</p><div class="modes" role="group" aria-label="Boot language"><button class="mode selected" data-mode="js" aria-pressed="true">JS-like <span>Functions & expressions</span></button><button class="mode" data-mode="t0" aria-pressed="false">Raw T0 <span>The stack language</span></button></div></div>
+        <div class="launch-actions"><button id="boot" class="primary" disabled>Boot Turtles <span aria-hidden="true">↗</span></button><button id="power" class="quiet" disabled>Power off</button><p id="download-note">Checking the latest build…</p></div>
+      </div>
+      <div class="machine-bar"><div role="status"><span id="status-dot"></span><span id="status">Preparing the demo</span></div><span id="build-label">Latest verified image</span></div>
+      <div id="progress-wrap" hidden><progress id="progress" max="1" value="0" aria-label="Emulator download"></progress><span id="progress-label"></span></div>
+      <div class="terminal-wrap">
+        <div id="welcome"><span class="terminal-glyph" aria-hidden="true">&gt;_</span><h2>A whole machine, one small language.</h2><p>Choose a language and click Boot. The emulator downloads on demand; your programs execute locally in this browser.</p><p class="muted">Desktop Chrome recommended. No account or installation required.</p></div>
+        <pre id="uart" aria-label="Actual guest serial output" tabindex="0" hidden></pre>
+      </div>
+      <form id="program-form">
+        <label for="source"><span id="input-label">JS-like source</span><span>⌘ Enter / Ctrl Enter to run</span></label>
+        <div class="editor"><span id="prompt" aria-hidden="true">js&gt;</span><textarea id="source" rows="4" spellcheck="false" autocapitalize="off" autocomplete="off" aria-describedby="language-note" disabled placeholder="function square(x) { return x * x; }&#10;square(9)"></textarea><button id="run" class="primary" disabled>Run</button></div>
+      </form>
+      <div class="examples"><span>Try an example</span><div id="examples"></div></div>
+    </section>
+    <p id="notice" role="alert"></p>
+    <p id="language-note" class="language-note">The JS-like language is built in T0. It supports functions, closures, expressions, arrays and control flow; it is an experimental dialect, not full ECMAScript.</p>
+
+    <section class="details-grid" aria-label="About this experiment">
+      <article><p class="eyebrow">02 / What is running?</p><h2>All the way into the guest.</h2><p>The browser downloads QEMU as WebAssembly and boots the ARM image. T0’s native compiler and VM load the parser and JS-like compiler, which are themselves T0 programs. New code is parsed and compiled inside that machine.</p><p class="small">Bare metal here means no operating system beneath T0 in the virtual machine. This demo does not claim a boot on physical ARM hardware.</p></article>
+      <article><p class="eyebrow">03 / Take the image with you</p><h2>Same bytes. Another machine.</h2><p>Download a tested image and boot it in native QEMU. Every release includes both languages, raw binaries, ELF images and SHA-256 checksums.</p><div class="links"><a id="download-t0" href="https://github.com/adamvy/TURTLES/releases">Raw T0 image ↗</a><a id="download-js" href="https://github.com/adamvy/TURTLES/releases">JS-like image ↗</a><a id="release" href="https://github.com/adamvy/TURTLES/releases">Release & checksums ↗</a></div><button id="check-update" class="text-button">Check for a newer image</button></article>
+    </section>
+    <details class="technical"><summary>Memory, browser support and self-hosting</summary><div><p>The guest has 512 MiB RAM and no garbage collector. Its arena and heap grow monotonically. Exhaustion halts the guest; reboot starts a fresh machine and clears its state.</p><p>The browser emulator reserves a larger shared memory address space than the guest RAM. Desktop Chrome is the primary target. A download of approximately 58 MB is required on first boot; a supported browser and enough memory are needed. GitHub Pages uses a same-origin service worker to enable WebAssembly threads.</p><p>The parser and JS-like compiler are self-hosted in T0. The ARM primitive core is assembly, and the image builder remains JavaScript running under Node. A guest that rebuilds its own native image is a future milestone.</p><p><a href="https://github.com/adamvy/TURTLES/blob/main/docs/compatibility.md">Language compatibility</a> · <a href="https://github.com/adamvy/TURTLES/blob/main/docs/browser.md">Browser engine and provenance</a></p></div></details>
+    <footer><div><strong>TURTLES</strong> · Ultra-Recursive Tool for Language EnvironmentS<br>Original project by <a href="https://github.com/kgrgreer">Kevin Greer</a>. ARM/browser experiment in <a href="https://github.com/adamvy/TURTLES">Adam’s fork</a>.</div><div><a href="https://github.com/ktock/qemu-wasm">QEMU Wasm</a> · <a href="https://github.com/adamvy/TURTLES/blob/main/LICENSE">Apache-2.0 project license</a><br>Programs stay in this browser. No analytics.</div></footer>
+    <div id="guest-container" hidden></div>
+  </main>
+</body>
+</html>
