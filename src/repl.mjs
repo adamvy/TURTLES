@@ -87,7 +87,7 @@ function boot() {
   $('#progress-label').textContent = 'Preparing a fresh machine…';
   frame = document.createElement('iframe');
   frame.title = runningRuntime === 'arm' ? 'Turtles ARM machine' : 'Turtles JavaScript host';
-  frame.src = './guest.html';
+  frame.src = new URL('./guest.html', import.meta.url);
   $('#guest-container').append(frame);
   controls();
 }

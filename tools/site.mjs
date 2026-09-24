@@ -18,8 +18,17 @@ const releaseURL = `https://github.com/${repository}/releases/${releaseTag === '
 const downloadBase = `https://github.com/${repository}/releases/${releaseTag === 'preview' ? 'latest/download' : `download/${releaseTag}`}`;
 const destination = resolve(root, 'dist'), releases = resolve(root, 'build/release');
 for (const path of [destination, releases]) { rmSync(path, {recursive: true, force: true}); mkdirSync(path, {recursive: true}); }
-for (const file of ['index.html', 'style.css', 'repl.mjs', 'isolation.js', 'coi-serviceworker.js',
-  'qemu.mjs', 'guest.html', 'guest.mjs', 'host.js', 't0.js', 'parsers.js', 'jsparser.js', 'som.js']) {
+const assets = ['style.css', 'repl.mjs', 'qemu.mjs', 'guest.html', 'guest.mjs',
+  'host.js', 't0.js', 'parsers.js', 'jsparser.js', 'som.js'];
+// Version the whole import graph so browser caches cannot mix release scripts.
+const assetPath = `assets/${hash(Buffer.concat(assets.map(file => readFileSync(resolve(root, 'src', file)))))}`;
+mkdirSync(resolve(destination, assetPath), {recursive: true});
+for (const file of assets) {
+  copyFileSync(resolve(root, 'src', file), resolve(destination, assetPath, file));
+}
+writeFileSync(resolve(destination, 'index.html'), readFileSync(resolve(root, 'src/index.html'), 'utf8')
+  .replace('./style.css', `./${assetPath}/style.css`).replace('./repl.mjs', `./${assetPath}/repl.mjs`));
+for (const file of ['isolation.js', 'coi-serviceworker.js']) {
   copyFileSync(resolve(root, 'src', file), resolve(destination, file));
 }
 for (const file of ['LICENSE', 'turtles.png']) copyFileSync(resolve(root, file), resolve(destination, file));
