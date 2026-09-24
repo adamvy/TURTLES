@@ -18,6 +18,10 @@ same-origin responses and reloads the page once to enable shared memory.
 The worker does not store programs or image responses. Browser protections stay
 enabled. A site without secure context, service-worker access or sufficient
 memory reports a startup error.
+First-visit setup waits for the worker to become active and control the page
+before reloading; Boot stays disabled until shared memory is available. This
+avoids a race where an early reload still receives an unisolated document.
+A visible Reload control provides recovery if browser policy prevents setup.
 
 ## Latest images and permanent downloads
 

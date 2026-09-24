@@ -1,5 +1,9 @@
 Kevin Greer's Turtles boots from an AArch64 machine-code image, with no guest OS or C runtime. The browser demo runs the same image in QEMU WebAssembly.
 
+Version 0.2.1 fixes first-visit browser setup: the page waits for the isolation
+worker to control navigation before reloading and enabling Boot. The ARM image
+bytes are unchanged from 0.2.0. Four startup-order regression tests cover the fix.
+
 Try the [live browser machine](https://adamvy.github.io/TURTLES/). Choose raw T0 or the JS-like language, then Boot. The emulator downloads only on demand; programs are compiled and evaluated inside the ARM guest.
 
 The T0-written JS-like compiler now supports named and anonymous functions, lexical closures, recursion, argument lists, returns and arrow functions. It remains an experimental dialect, not full ECMAScript. See the repository's language and compatibility documentation.

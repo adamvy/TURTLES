@@ -1,6 +1,6 @@
 {
   "name": "turtles-bare-metal",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "description": "A JavaScript-built, no-C AArch64 T0 environment for QEMU",
@@ -12,7 +12,7 @@
     "start:js": "node tools/run.mjs --mode js",
     "console": "node tools/console.mjs",
     "console:js": "node tools/console.mjs --mode js",
-    "test": "node --test test/assembler.test.mjs test/parser-reference.test.mjs && node test/reference.mjs --extended && node tools/build.mjs && node test/boot-images.mjs && node test/core-full.mjs && node test/js-adapter-full.mjs && node test/full-qemu.mjs && node test/functions-native.mjs && npm run test:numbers",
+    "test": "node --test test/assembler.test.mjs test/parser-reference.test.mjs test/isolation.test.mjs && node test/reference.mjs --extended && node tools/build.mjs && node test/boot-images.mjs && node test/core-full.mjs && node test/js-adapter-full.mjs && node test/full-qemu.mjs && node test/functions-native.mjs && npm run test:numbers",
     "test:numbers": "NUMBER_POW=1 NUMBER_RANDOM=2000 node test/numbers.mjs",
     "test:guest": "node tools/build.mjs && node test/full-qemu.mjs",
     "test:boot": "node tools/build.mjs && node test/boot-images.mjs",

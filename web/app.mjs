@@ -26,7 +26,7 @@ function status(message, state = '') {
   $('#status-dot').className = state;
 }
 function controls() {
-  $('#boot').disabled = !manifest;
+  $('#boot').disabled = !manifest || !crossOriginIsolated || typeof SharedArrayBuffer === 'undefined';
   $('#boot').textContent = frame ? 'Reboot Turtles ↗' : 'Boot Turtles ↗';
   $('#power').disabled = !frame;
   $('#source').disabled = !ready;
@@ -167,7 +167,14 @@ $('#check-update').addEventListener('click', async () => {
 selectMode('js');
 try {
   manifest = await latest(); showRelease(manifest);
-  status('Ready to boot');
+  if (crossOriginIsolated && typeof SharedArrayBuffer !== 'undefined') {
+    status('Ready to boot');
+  } else {
+    status('Preparing browser memory support', 'loading');
+    $('#reload').hidden = false;
+    notice('Setting up the browser for its first boot. This page will reload automatically. If setup does not finish, use Reload.');
+  }
   $('#download-note').textContent = 'First boot downloads ~58 MB. Runs locally.';
   controls();
 } catch (error) { status('Release unavailable', 'error'); notice(error.message); }
+$('#reload').addEventListener('click', () => location.reload());
