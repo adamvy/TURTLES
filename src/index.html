@@ -30,7 +30,9 @@
       <div id="progress-wrap" hidden><progress id="progress" max="1" value="0" aria-label="Emulator download"></progress><span id="progress-label"></span></div>
       <div class="terminal-wrap">
         <div id="welcome"><span class="terminal-glyph" aria-hidden="true">&gt;_</span><h2>A whole machine, one small language.</h2><p>Boot one T0 environment. Switch to JS-like or SOM whenever you like; your bindings and objects stay in the same session.</p><p class="muted">Desktop Chrome recommended. No account or installation required.</p></div>
-        <pre id="uart" aria-label="REPL output" tabindex="0" hidden></pre>
+        <pre id="uart" aria-label="REPL output" hidden></pre>
+        <textarea id="terminal-input" aria-label="Terminal input" aria-describedby="terminal-help" spellcheck="false" autocapitalize="off" autocomplete="off" disabled></textarea>
+        <p id="terminal-help">Click the terminal to type. Enter runs a line; use :paste and :end for multiline input.</p>
       </div>
       <form id="program-form">
         <label for="source"><span id="input-label">T0 source</span><span>⌘ Enter / Ctrl Enter to run</span></label>

@@ -43,7 +43,7 @@ h1 span{color:#a2bdaa}
 #build-label{white-space:nowrap;color:#809886}
 #progress-wrap{padding:12px 24px;background:#11251c;color:var(--muted);font:11px var(--mono)}
 progress{width:100%;height:4px;accent-color:var(--accent);display:block;margin-bottom:5px}
-.terminal-wrap{background:#08130f}
+.terminal-wrap{background:#08130f;position:relative}
 #welcome{min-height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:35px 24px}
 #welcome[hidden]{display:none}
 .terminal-glyph{font:36px var(--mono);color:#719f7e;margin-bottom:10px}
@@ -51,7 +51,10 @@ progress{width:100%;height:4px;accent-color:var(--accent);display:block;margin-b
 #welcome p{color:var(--muted);font-size:13px;max-width:540px;margin:0}
 #welcome .muted{color:#708b77;font-size:11px;margin-top:15px}
 #uart{margin:0;min-height:310px;height:360px;padding:22px 26px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;color:#b9e4c3;font:13px/1.7 var(--mono);tab-size:4}
-#uart:focus-visible{outline:1px solid var(--accent);outline-offset:-3px}
+.terminal-wrap:focus-within #uart{outline:1px solid var(--accent);outline-offset:-3px}
+.terminal-wrap:focus-within #uart.reading::after{content:' ';display:inline-block;width:.6em;height:1em;vertical-align:-.15em;background:var(--accent)}
+#terminal-input{position:absolute;left:26px;bottom:45px;width:1px;height:1px;padding:0;border:0;opacity:0}
+#terminal-help{margin:0;padding:0 26px 12px;color:var(--muted);font:11px/1.5 var(--mono)}
 form{background:#0e2118;border-top:1px solid var(--line);padding:13px 22px 17px}
 form label{display:flex;justify-content:space-between;color:#8daa93;font-size:10px;margin-bottom:5px}
 form label span:first-child{color:#bdd2c0}

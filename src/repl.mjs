@@ -27,6 +27,7 @@ const examples = {
 };
 let manifest, bootImage, selectedMode = 't0', runningMode, runningRuntime, frame, booting = false, ready = false;
 let tail = '', inputPending = false, haltedNotice = false;
+let terminalReading = false, terminalPaste = false, terminalSubmission = false, terminalLine = '', terminalQueue = '';
 const maxOutput = 256 * 1024;
 
 function notice(message = '') { $('#notice').textContent = message; }
@@ -38,8 +39,10 @@ function controls() {
   $('#boot').disabled = runtime() === 'arm' && (!manifest || !crossOriginIsolated || typeof SharedArrayBuffer === 'undefined');
   $('#boot').textContent = frame ? 'Reboot Turtles ↗' : 'Boot Turtles ↗';
   $('#power').disabled = !frame;
-  $('#source').disabled = !ready;
+  $('#source').disabled = !ready || inputPending;
   $('#run').disabled = !ready || inputPending;
+  $('#terminal-input').disabled = !frame || booting || haltedNotice;
+  $('#uart').classList.toggle('reading', terminalReading);
   for (const button of modes) button.disabled = !!frame && (!ready || inputPending);
 }
 function selectMode(mode) {
@@ -68,6 +71,8 @@ function stop() {
   // Removing the complete browsing context also terminates its Wasm workers.
   frame?.contentWindow?.postMessage({type: 'stop'}, location.origin);
   frame?.remove(); frame = undefined; booting = ready = inputPending = false;
+  terminalReading = terminalPaste = terminalSubmission = false; terminalLine = terminalQueue = '';
+  $('#terminal-input').value = '';
   $('#progress-wrap').hidden = true;
   controls();
 }
@@ -93,32 +98,46 @@ function boot() {
 }
 function appendUART(text) {
   const uart = $('#uart');
-  uart.textContent = (uart.textContent + text.replace(/\r/g, '')).slice(-maxOutput);
+  let output = uart.textContent;
+  for (const character of text) {
+    if (character === '\b') output = output.replace(/[^\n]$/u, '');
+    else if (character !== '\r') output += character;
+  }
+  uart.textContent = output.slice(-maxOutput);
   uart.scrollTop = uart.scrollHeight;
   tail = (tail + text).slice(-512);
   if (/(?:^|[\r\n])HALTED: (?:value heap exhausted|compiler\/frame arena exhausted|data stack exhausted|native call stack exhausted|initialization failed)[^\r\n]*\r?\n$/.test(tail)) {
     ready = false; inputPending = false; booting = false;
+    terminalReading = false; terminalQueue = '';
     haltedNotice = true;
     status('Guest halted · reboot to start again', 'error');
     notice('The guest halted. Reboot starts a fresh machine and clears its memory.');
   } else {
-    const prompt = tail.match(/(?:^|[\r\n])(t0|js|som)> $/);
+    const prompt = !terminalReading && tail.match(/(?:^|[\r\n])(t0|js|som)> $/);
     if (prompt) {
       const firstPrompt = booting;
       runningMode = prompt[1];
       ready = true; booting = false; inputPending = false;
+      terminalReading = true; terminalPaste = terminalSubmission = false; terminalLine = '';
       $('#progress-wrap').hidden = true;
       if (firstPrompt && selectedMode !== runningMode) { switchLanguage(selectedMode); return; }
       if (selectedMode !== runningMode) selectMode(runningMode);
       if (haltedNotice) { notice(); haltedNotice = false; }
       status(`${labels[runningMode]} running on ${runningRuntime === 'arm' ? 'ARM · QEMU' : 'the JavaScript host'}`, 'running');
+      if (firstPrompt) { controls(); $('#terminal-input').focus({preventScroll: true}); }
+      drainTerminal();
+    } else if (!terminalReading && terminalSubmission && /(?:^|[\r\n])\.\.\. $/.test(tail)) {
+      terminalReading = terminalPaste = true; terminalLine = '';
+      ready = false; inputPending = true;
+      status('Multiline input · :end to run, :cancel to discard', 'running');
+      drainTerminal();
     }
   }
   controls();
 }
 function switchLanguage(mode) {
   if (!frame || !ready || inputPending) return;
-  notice(); inputPending = true; ready = false; tail = '';
+  notice(); inputPending = true; ready = terminalReading = false; tail = '';
   status(`Switching to ${labels[mode]} · keeping this session`, 'loading');
   controls();
   frame.contentWindow.postMessage({type: 'language', mode}, location.origin);
@@ -143,6 +162,52 @@ addEventListener('message', event => {
     notice(message.message + (runningRuntime === 'arm' ? ' Try rebooting in desktop Chrome with enough free memory.' : ' Reboot to start a fresh session.'));
   }
 });
+// The guest owns line editing and echo. Queue type-ahead until each serial
+// prompt, so editor submissions and terminal input cannot interleave.
+function drainTerminal() {
+  if (!terminalReading || !terminalQueue) return;
+  const end = terminalQueue.indexOf('\n');
+  const text = end < 0 ? terminalQueue : terminalQueue.slice(0, end + 1);
+  terminalQueue = terminalQueue.slice(text.length);
+  for (const character of text) {
+    if (character === '\x7f') terminalLine = terminalLine.replace(/.$/u, '');
+    else if (character !== '\n') terminalLine += character;
+  }
+  if (end >= 0) {
+    terminalLine = ''; ready = terminalReading = false; inputPending = terminalSubmission = true;
+    status(terminalPaste ? 'Collecting multiline input…' : 'Evaluating…', 'loading');
+  } else inputPending = terminalPaste || terminalLine.length > 0;
+  controls();
+  frame.contentWindow.postMessage({type: 'input', text}, location.origin);
+}
+function queueTerminal(text) {
+  if (!frame || booting || haltedNotice || !text) return;
+  if (text !== '\x7f' && text !== '\n' && new TextEncoder().encode(terminalLine + terminalQueue + text).length > 65535) {
+    notice('Terminal input is limited to 65,535 UTF-8 bytes.'); return;
+  }
+  notice(); terminalQueue += text.replace(/\r\n?/g, '\n');
+  drainTerminal();
+}
+const terminalInput = $('#terminal-input');
+function readTerminalInput() {
+  const text = terminalInput.value;
+  terminalInput.value = '';
+  if (/[\x00-\x08\x0b-\x1f\x7f]/.test(text.replace(/\r\n?/g, '\n'))) {
+    notice('Paste plain text without terminal control characters.'); return;
+  }
+  queueTerminal(text);
+}
+terminalInput.addEventListener('input', event => { if (!event.isComposing) readTerminalInput(); });
+terminalInput.addEventListener('compositionend', readTerminalInput);
+terminalInput.addEventListener('keydown', event => {
+  if (event.isComposing || event.metaKey || event.altKey) return;
+  if (event.key === 'Enter' || event.key === 'Backspace') {
+    event.preventDefault(); queueTerminal(event.key === 'Enter' ? '\n' : '\x7f');
+  }
+});
+$('#uart').addEventListener('click', () => {
+  if (getSelection()?.isCollapsed) terminalInput.focus({preventScroll: true});
+});
 $('#program-form').addEventListener('submit', event => {
   event.preventDefault(); if (!frame || !ready || inputPending) return;
   const source = $('#source').value.replace(/\r\n?/g, '\n');
@@ -151,7 +216,7 @@ $('#program-form').addEventListener('submit', event => {
   if (/^:(?:end|cancel)\s*$/m.test(source) || /[\x00-\x08\x0b-\x1f\x7f]/.test(source)) return notice('Remove control characters or standalone :end / :cancel lines from the source.');
   const command = source.trim();
   if (/^:(t0|js|som)$/.test(command)) { switchLanguage(command.slice(1)); return; }
-  notice(); inputPending = true; tail = ''; controls();
+  notice(); inputPending = true; terminalReading = false; tail = ''; controls();
   status(runningRuntime === 'arm' ? 'Evaluating inside the guest…' : 'Evaluating in T0…', 'loading');
   frame.contentWindow.postMessage(runningRuntime === 'host' ? {type: 'evaluate', source} :
     {type: 'input', text: command === ':help' ? ':help\n' : `:paste\n${source}${source.endsWith('\n') ? '' : '\n'}:end\n`}, location.origin);

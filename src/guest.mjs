@@ -26,7 +26,8 @@ addEventListener('message', async event => {
     return;
   }
   if (message?.type === 'input' && typeof message.text === 'string') {
-    if (guest) guest.write(message.text);
+    if (hostWorker) hostWorker.postMessage(message);
+    else if (guest) guest.write(message.text);
     else if (starting && !hostWorker && pendingInput.length < 16) pendingInput.push(message.text);
   }
   if (message?.type !== 'boot' || starting) return;
