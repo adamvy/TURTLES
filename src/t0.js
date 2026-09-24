@@ -1,6 +1,16 @@
 var stack = [], heap = [], heap2 = [], hp, __arrayStart__ = '__arrayStart__', outerCode;
 function fn(f) { return code => code.push(f); }
 function bfn(f) { return fn(() => { var b = stack.pop(), a = stack.pop(); stack.push(f(a, b)); }); }
+function readLiteral(end) {
+  var text = '', c;
+  while ( ! scope.match(end) ) {
+    c = scope.readChar();
+    if ( c === undefined ) throw new SyntaxError('Unterminated literal (expected ' + end + ')');
+    text += c;
+  }
+  scope.ip += end.length;
+  return text;
+}
 var scope = {
   readChar: function() { return this.ip < this.input.length ? this.input.charAt(this.ip++) : undefined; },
   match: function(s) { return this.input.substring(this.ip, this.ip + s.length) == s; },
@@ -13,14 +23,20 @@ var scope = {
     // console.log('sym: ', sym);
     return sym;
   },
-  eval$: src => {
-    var oldInput = scope.input, oldIp = scope.ip;
+  compile$: (src, code) => {
+    var oldScope = scope, oldInput = scope.input, oldIp = scope.ip;
+    var ownsInput = Object.hasOwn(scope, 'input'), ownsIp = Object.hasOwn(scope, 'ip');
     scope.input = src;
-    scope.ip    = 0;
-    for ( var sym ; sym = scope.readSym() ; ) scope.evalSym(sym, { push: f => f() });
-    scope.input = oldInput;
-    scope.ip    = oldIp
+    scope.ip = 0;
+    try {
+      for ( var sym ; sym = scope.readSym() ; ) scope.evalSym(sym, code);
+    } finally {
+      scope = oldScope;
+      if ( ownsInput ) scope.input = oldInput; else delete scope.input;
+      if ( ownsIp ) scope.ip = oldIp; else delete scope.ip;
+    }
   },
+  eval$: src => scope.compile$(src, { push: f => f() }),
   eval: code => { code.push(() => scope.eval$(stack.pop())); },
   evalSym: function(line, code) {
     // console.log('********line', line);
@@ -54,16 +70,14 @@ var scope = {
       var s = line.substring(1);
       code.push(() => stack.push(s));
     } else {
-      console.log('Warning: Unknown Symbol or Forward Reference "' + line + '" at:', scope.input.substring(scope.ip, scope.ip+40).replaceAll('\n', '\\n'), ' ...');
-      if ( line === '' ) debugger;
       code.push(() => {
-        if ( typeof scope[line] !== 'function' ) { console.error('Error, invalid symbol: ', line); debugger; }
+        if ( typeof scope[line] !== 'function' ) throw new ReferenceError('Unknown word: ' + line);
         scope[line]({ push: f => f()})
       });
     }
   },
   '{': function(code) {
-    var start = scope.ip, oldScope = scope, vars = [], fncode = [], paramCount, name = '';
+    var start = scope.ip, oldScope = scope, vars = [], fncode = [], paramCount, name = '', l;
     var curScope = scope = Object.create(scope);
     function countFrames() { var d = 0, s = scope; while ( s !== curScope ) { s = s.__proto__; d++; } return d; }
     function framesUp(d) { var p = hp; for ( var i = 0 ; i < d ; i++ ) p = heap[p]; return p; }
@@ -74,7 +88,9 @@ var scope = {
       scope[v + '++'] = accessor(index, i => heap[i]++);
       scope[v + '--'] = accessor(index, i => heap[i]--);
     }
+    try {
     while ( ( l = scope.readSym() ) != '|' && l != 'let' ) {
+      if ( ! l ) throw new SyntaxError('Unterminated function parameters');
       if ( vars.length == 0 && l.startsWith(':') ) {
         name = l.substring(1);
         scope[name + '<-'] = accessor(0, i => { throw name; });
@@ -90,6 +106,7 @@ var scope = {
     if ( l === 'let' ) { // handle local variables
       outer: while ( l !== '|' ) {
         while ( ! ( l = scope.readSym() ).startsWith(':') ) {
+          if ( ! l ) throw new SyntaxError('Unterminated function locals');
           if ( l == '|' ) break outer;
           scope.evalSym(l, fncode);
         }
@@ -99,9 +116,14 @@ var scope = {
         scope.evalSym(l, fncode);
       }
     }
-    while ( ( l = scope.readSym() ) != '}' ) scope.evalSym(l, fncode);
+    while ( ( l = scope.readSym() ) != '}' ) {
+      if ( ! l ) throw new SyntaxError('Unterminated function body');
+      scope.evalSym(l, fncode);
+    }
     oldScope.ip = scope.ip;
-    scope = oldScope;
+    } finally {
+      scope = oldScope;
+    }
     var src = scope.input.substring(start-2, scope.ip-1);
     code.push(function() {
       var p = hp;
@@ -111,12 +133,15 @@ var scope = {
         hp = heap.length;
         heap.push(p);
         for ( var i = 0 ; i < paramCount ; i++ ) heap.push(stack.pop());
+        // Reserve locals before initializers can allocate captured child frames.
+        for ( var i = paramCount ; i < vars.length ; i++ ) heap.push(undefined);
         try {
           for ( var i = 0 ; i < fncode.length ; i++ ) fncode[i]();
         } catch (x) {
           if ( x !== name ) throw x;
+        } finally {
+          hp = old;
         }
-        hp = old;
       };
       f.toString = function() { return src; }
       stack.push(f);
@@ -124,7 +149,10 @@ var scope = {
   },
   switch: function(code) {
     var options = [], l;
-    while ( ( l = scope.readSym() ) != 'end' ) scope.evalSym(l, options);
+    while ( ( l = scope.readSym() ) != 'end' ) {
+      if ( ! l ) throw new SyntaxError('Unterminated switch');
+      scope.evalSym(l, options);
+    }
     for ( var i = 0 ; i < options.length-1 ; i += 2 ) { options[i](); options[i] = stack.pop(); }
     code.push(function() {
       var value = stack.pop();
@@ -179,11 +207,11 @@ var scope = {
   'string?': fn(() => { stack.push(typeof stack.pop() === 'string'); }),
   'array?':  fn(() => { stack.push(Array.isArray(stack.pop())); }),
   // TODO: rename to i{ }i  ??? What is outerCode used for?
-  'i[':      code => { outerCode = code; var s = '', c; while ( (c = scope.readChar()) != ']' ) s += c; scope.eval$(s); },
-  '"':       code => { var s = '', c; while ( (c = scope.readChar()) != '"' ) s += c; code.push(() => stack.push(s)); },
-  '"""':     code => { var s = ''; while ( ! scope.match('"""') ) s += scope.readChar(); code.push(() => stack.push(s)); scope.readChar(); scope.readChar(); scope.readChar(); },
-  '//':      () => { while ( scope.readChar() != '\n' );},
-  '/*':      () => { while ( scope.readSym() != '*/' );},
+  'i[':      code => { outerCode = code; scope.eval$(readLiteral(']')); },
+  '"':       code => { var s = readLiteral('"'); code.push(() => stack.push(s)); },
+  '"""':     code => { var s = readLiteral('"""'); code.push(() => stack.push(s)); },
+  '//':      () => { var c; while ( (c = scope.readChar()) !== undefined && c !== '\n' ); },
+  '/*':      () => { var token; while ( (token = scope.readSym()) !== '*/' ) if ( ! token ) throw new SyntaxError('Unterminated comment'); },
   '!':       fn(() => { stack.push( ! stack.pop()); }),
   '&':       bfn((a,b) => a && b),
   '|':       bfn((a,b) => a || b),
@@ -214,8 +242,9 @@ var scope = {
     var s = scope;
     code.push(() => {
       var oldScope = scope, key = stack.pop();
-      if ( ! s[key] ) { console.log('Key not found in ??: ', key); debugger; }
-      scope = s; s[key]({push: f => f()}); scope = oldScope;
+      if ( typeof s[key] !== 'function' ) throw new ReferenceError('Unknown word: ' + key);
+      scope = s;
+      try { s[key]({push: f => f()}); } finally { scope = oldScope; }
     });
   },
   include: async function load(fn) {

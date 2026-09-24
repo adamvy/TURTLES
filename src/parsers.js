@@ -51,11 +51,11 @@ scope.eval$(`
 { str v | { ps let 0 :i |
   { | i str len <  { | ps .head str i charAt = } && } { | ps .tail :ps  i++ } while
   str len i = { | v ps .:value } { | false } ifelse
-} /* tok */ } ::litMap
+} tok } ::litMap
 
 { str | str str litMap } ::lit
 
-{ start end c | c start >=  c end <= & } ::inRange
+{ start end c | c string? { | c start >=  c end <= & } && } ::inRange
 { start end | { ps |
   start end ps .head inRange { | ps .tail } { | false } ifelse
 } } ::range
@@ -78,29 +78,25 @@ scope.eval$(`
   [ { | ps :ret  parser ps .parse :ps ps } { | i++ ps .value } while ]
   i min >=  { a | a ret .:value } { _ | false } ifelse
 } } ::repeatp
+{ | repeatp } ::repeat
 
 { | 0 repeatp } ::star
 { | 1 repeatp } ::plus
 
 { parser delim |
   [ [ parser delim ] 0 seq1 0 repeatp parser opt ] seq
-  { a | [ a 0 @  { e | e } do a 1 @ ] } mapp
+  { a | [ a 0 @  { e | e } do a 1 @ { | a 1 @ } if ] } mapp
 } ::delim
 
 { parser | { ps let parser ps .parse :ret | ret { | ret } { | false ps .:value } ifelse } } ::opt
 
 { parser | { ps | parser ps .parse { | false } { | ps } ifelse } } ::notp
 
-{ str | { ps | str ps .head indexOf -1 = { | ps .tail } { | false } ifelse } } ::notChars
+{ str | { ps | ps .head string? { | str ps .head indexOf -1 = } && { | ps .tail } { | false } ifelse } } ::notChars
 
-{ str | { ps | str ps .head indexOf -1 > { | ps .tail } { | false } ifelse } } ::anyChar
+{ str | { ps | ps .head string? { | str ps .head indexOf -1 > } && { | ps .tail } { | false } ifelse } } ::anyChar
 
 { p f | { ps | p ps .parse :ps ps { | ps .value f () ps .:value } { | false } ifelse } } ::mapp
 
 { o m super f | { ps | o m super () () f mapp ps .parse } } ::action
-
 `);
-
-// Access to current input:
-// ip_ print
-// input_ print
