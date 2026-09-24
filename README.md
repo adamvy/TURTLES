@@ -38,3 +38,30 @@ The intention is to create T1 as a derivative of SOM and and then T2 as higher-l
 axiom-based language on top of T1 (maybe to be named "Axiom").
 
 An ARM Cortex M0+ assembler is also planned, as this is the controller used by the RP2040.
+
+## JS-like REPL and AArch64 port
+
+[Try the REPL](https://adamvy.github.io/TURTLES/) or [download an image](https://github.com/adamvy/TURTLES/releases/latest).
+The page can run either the original JavaScript interpreter or an ARM image in browser QEMU.
+Both use the same `src/parsers.js` and `src/jsparser.js`, written in T0. The JS-like layer adds functions, arrows, mutable lexical closures, recursion and returns. It remains a dialect: `let` is function-scoped; there are no objects, classes, string literals, `const`, declaration hoisting or full ECMAScript semantics. SOM sources remain unchanged.
+
+The ARM target is **ARMv8-A / AArch64, Cortex-A53, QEMU `virt-8.2`, 512 MiB RAM**, with a PL011 serial console. This is separate from the RP2040 target discussed above. There is no guest OS, C runtime or garbage collector. The arena and heap grow until exhausted, then halt; reboot clears memory. T0's intended core operations are implemented, with repairs for malformed input, captured locals and error recovery. JavaScript host-object/prototype access is unavailable on ARM. General finite powers may differ from a JS engine by one ULP. The parser/compiler runs in T0; rebuilding the native boot image from within the guest remains future work. Physical hardware boot is not yet demonstrated.
+
+Build with Node.js 20 or newer; no dependencies or external assembler are required:
+
+```sh
+npm run build      # build/turtles-{t0,js}.{elf,bin}
+npm start          # builds and serves the REPL at http://127.0.0.1:63820/
+```
+
+Install QEMU (`brew install qemu` on macOS, `sudo apt install qemu-system-arm` on Ubuntu). Run a downloaded image from its directory:
+
+```sh
+qemu-system-aarch64 -machine virt-8.2 -cpu cortex-a53 -accel tcg -m 512M -smp 1 -nographic -device loader,file=turtles-js.elf,cpu-num=0
+```
+
+Replace `turtles-js.elf` with `turtles-t0.elf` for raw T0 (or prefix `build/` for local builds). Exit with Ctrl-a, then x. Enter `:paste`, a multiline program, and `:end` on its own line. For raw binaries, use `loader,file=turtles-js.bin,addr=0x40200000,cpu-num=0,force-raw=on` instead.
+
+The browser downloads ~58 MB of [QEMU Wasm](https://github.com/ktock/qemu-wasm) on demand from pinned, checksum-verified author-hosted assets. Their exact source commit was not supplied by the author. Desktop Chrome is the primary browser target; shared Wasm memory reserves more address space than the guest's 512 MiB RAM. A small service worker enables cross-origin isolation on GitHub Pages. Programs stay in the browser.
+
+`src/arm/` holds the assembly runtime and JavaScript image builder. `npm run build:site` packages `dist/` and `build/release/`; pushing a `v*` tag publishes immutable images with SHA-256 checksums and updates the site. Earlier experimental releases remain available under their original tags.

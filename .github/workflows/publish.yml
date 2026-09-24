@@ -1,0 +1,56 @@
+name: Publish ARM images and REPL
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: public-turtles-release
+  cancel-in-progress: false
+jobs:
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm run build:site
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arm-images
+          path: build/release/
+      - name: Publish images
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            mkdir existing
+            gh release download "$RELEASE_TAG" --dir existing
+            diff -r build/release existing
+          else
+            gh release create "$RELEASE_TAG" build/release/* --verify-tag --title "Turtles $RELEASE_TAG" --notes 'Raw T0 and JS-like AArch64 images for QEMU virt-8.2 / Cortex-A53. Boot commands and browser REPL: https://adamvy.github.io/TURTLES/'
+          fi
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+  deploy:
+    needs: release
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - uses: actions/deploy-pages@v4
+        id: deployment

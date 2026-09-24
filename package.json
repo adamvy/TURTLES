@@ -1,0 +1,11 @@
+{
+  "name": "turtles",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "node src/arm/build.mjs",
+    "build:site": "node tools/site.mjs",
+    "start": "node tools/site.mjs --serve"
+  }
+}
