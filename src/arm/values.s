@@ -1,5 +1,5 @@
 // Raw strings: u64 byte length at +0, UTF8 bytes at +8, trailing zero.
-// Arbitrary bytes are preserved. Length, indexing and charAt decode code points.
+// Arbitrary bytes are preserved. Character cursors decode at byte offsets.
 // x0 bytes,x1 byte count -> copied string. Embedded zero bytes are valid.
 string_from_utf8:
 string_new:
@@ -215,56 +215,6 @@ string_point_length:
     add x0, x0, #8
     add x1, x0, x1
     b utf8_count
-
-// x0 string,x1 code-point index -> byte offset, clamped to [0, byte length].
-string_point_offset:
-    stp x19, x20, [sp, #-48]!
-    stp x21, x25, [sp, #16]
-    stp x29, x30, [sp, #32]
-    add x19, x0, #8
-    ldr x20, [x0]
-    add x20, x19, x20
-    mov x21, x19
-    mov x25, x1
-    cmp x25, #0
-    b.le full_offset_done
-full_offset_next:
-    cmp x21, x20
-    b.hs full_offset_done
-    mov x0, x21
-    mov x1, x20
-    bl utf8_decode
-    mov x21, x1
-    sub x25, x25, #1
-    cbnz x25, full_offset_next
-full_offset_done:
-    sub x0, x21, x19
-    ldp x29, x30, [sp, #32]
-    ldp x21, x25, [sp, #16]
-    ldp x19, x20, [sp], #48
-    ret
-// x0 string,x1 code-point index -> one scalar string, or 0 if missing.
-string_point_at:
-    cmp x1, #0
-    b.lt full_point_missing
-    stp x19, x30, [sp, #-16]!
-    mov x19, x0
-    bl string_point_offset
-    ldr x1, [x19]
-    cmp x0, x1
-    b.hs full_point_at_missing
-    add x19, x19, #8
-    add x1, x19, x1
-    add x0, x19, x0
-    bl utf8_decode
-    bl string_from_codepoint
-    ldp x19, x30, [sp], #16
-    ret
-full_point_at_missing:
-    ldp x19, x30, [sp], #16
-full_point_missing:
-    mov x0, #0
-    ret
 
 // x0 scalar -> UTF8 string. Invalid scalar values become U+FFFD.
 string_from_codepoint:

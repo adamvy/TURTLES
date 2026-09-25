@@ -94,10 +94,10 @@ end } } ::Object_
 end } :Object
 
 { text let 0 :i false :character |
-  [ { | i text sourceLen < } { |
-    text i sourceCharAt :character text i sourceNext :i
-    character 92 charCode =$ i text sourceLen < & { |
-      text i sourceCharAt :character text i sourceNext :i
+  [ { | i text len < } { |
+    text i charAt :character text i nextCharPos :i
+    character 92 charCode =$ i text len < & { |
+      text i charAt :character text i nextCharPos :i
       character switch$
         'n { | nl } 'r { | cr } 't { | tab } 'b { | 8 charCode }
         'f { | 12 charCode } '0 { | 0 charCode } { | character }
@@ -106,9 +106,9 @@ end } :Object
   } while ] join
 } ::__som$decode
 { text let 0 :i |
-  [ " [ " { | i text sourceLen < } { |
-    text i sourceCharAt 34 charCode =$ { | " 34 charCode " } { | [ 34 charCode "  " text i sourceCharAt 34 charCode "  " ] join } ifelse
-    text i sourceNext :i
+  [ " [ " { | i text len < } { |
+    text i charAt 34 charCode =$ { | " 34 charCode " } { | [ 34 charCode "  " text i charAt 34 charCode "  " ] join } ifelse
+    text i nextCharPos :i
   } while " ] join " ] join
 } ::__som$quote
 
@@ -116,7 +116,7 @@ end } :Object
 { selector arguments let arguments joins :args |
   arguments len 0 = { |
     selector switch$
-      'value { | " ()" } 'length { | " strlen" } 'size { | " len" }
+      'value { | " ()" } 'length { | " len" } 'size { | " len" }
       'negated { | " neg" } 'not { | " !" } 'asString { | " >$" }
       'print { | " dup print" } 'printString { | " dup print$" }
       { | " ." selector +$ }
@@ -199,7 +199,7 @@ false :__som$invalid
   start compiler .program () :result
   result { |
     result .value :code
-    result .pos text sourceLen != { |
+    result .pos text len != { |
       result compiler .blockContents () :result
       result { | [ code "  " result .value ] join :code } if
     } if
@@ -207,7 +207,7 @@ false :__som$invalid
     start compiler .blockContents opt () :result
     result { | result .value { | result .value :code } if } if
   } ifelse
-  result { | result .pos text sourceLen = '__som$invalid ?? ! & { | "  " code +$ } { | false } ifelse } { | false } ifelse
+  result { | result .pos text len = '__som$invalid ?? ! & { | "  " code +$ } { | false } ifelse } { | false } ifelse
 } ::somCompile
 { source let source somCompile :code | code { | code eval } { | " Error: invalid or unsupported SOM source" print$ } ifelse } ::somEval
 `);

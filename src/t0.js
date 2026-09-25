@@ -197,6 +197,7 @@ var scope = {
   mod:       bfn((a, b) => a % b),
   pick:      fn(() => stack.push(stack[stack.length-stack.pop()-2])),
   charAt:    bfn((s, i) => i < s.length ? s.charAt(i) : null),
+  nextCharPos: bfn((str, pos) => pos + 1),
   charCode:  fn(() => stack.push(String.fromCharCode(stack.pop()))),
   indexOf:   bfn((s, p) => s.indexOf(p)),
   len:       fn(() => { stack.push(stack.pop().length); }),

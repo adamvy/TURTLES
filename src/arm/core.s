@@ -564,7 +564,7 @@ core_op_input:
     b value_push
 core_op_ip:
     stp x29, x30, [sp, #-16]!
-    // Source cursors use byte offsets, like sourceCharAt and PStream.pos.
+    // Source cursors use byte offsets, like charAt and PStream.pos.
     adr x0, compiler_index
     ldr x0, [x0]
     bl value_push
@@ -1407,7 +1407,8 @@ core_error_js_invalid:
     adr x0, core_message_js_invalid
     b runtime_error
 
-.balign 8
+// Keep frequently written VM state off pages containing ARM instructions.
+.balign 4096
 compiler_scope: .quad 0
 global_scope: .quad 0
 current_frame: .quad 0
@@ -1419,6 +1420,7 @@ outer_builder: .quad -1
 throw_pending: .quad 0
 throw_value: .quad 0
 repl_saved_sp: .quad 0
+.balign 4096
 core_local_handlers:
     .quad core_op_local_read, core_op_local_write
     .quad core_op_local_increment, core_op_local_decrement

@@ -14,13 +14,12 @@ const primitives = {
   '=': 'equal', '!=': 'not_equal', '<': 'less', '<=': 'less_equal', '>': 'greater', '>=': 'greater_equal',
   '!': 'not', '&': 'and', '|': 'or', '&&': 'lazy_and', '||': 'lazy_or', if: 'if', ifelse: 'ifelse', while: 'while',
   '()': 'call', eval: 'eval', print: 'print', debugger: 'debugger', const: 'const', ';': 'semicolon', parseInt: 'parse_int',
-  pick: 'pick', '[': 'array_start', ']': 'array_end', '@': 'get', ':@': 'set', len: 'len', byteLen: 'byte_len',
-  sourceLen: 'byte_len', sourceCharAt: 'source_char_at', sourceNext: 'source_next',
+  pick: 'pick', '[': 'array_start', ']': 'array_end', '@': 'get', ':@': 'set', len: 'len', byteLen: 'len',
   '[]WithValue': 'array_value', '[]WithFn': 'array_fn',
   '+$': 'concat', '=$': 'string_equal', '$<': 'string_less', '$<=': 'string_less_equal',
   '$>': 'string_greater', '$>=': 'string_greater_equal', strlen: 'string_len',
   'print$': 'string_print', '>$': 'to_string', '$indexOf': 'string_index_of',
-  charAt: 'char_at', charCode: 'char_code', indexOf: 'index_of', depth: 'depth', clear: 'clear', reset: 'reset', include: 'include',
+  charAt: 'char_at', nextCharPos: 'next_char_pos', charCode: 'char_code', indexOf: 'index_of', depth: 'depth', clear: 'clear', reset: 'reset', include: 'include',
 };
 
 function string(label, value) {

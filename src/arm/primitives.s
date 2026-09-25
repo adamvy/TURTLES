@@ -373,6 +373,7 @@ prim_set:
     ldp x29, x30, [sp], #16
     ret
 prim_len:
+    // Arrays and strings both begin with their length (elements or bytes).
     stp x29, x30, [sp, #-16]!
     bl value_pop
     ldr x0, [x0]
@@ -490,13 +491,6 @@ prim_string_len:
     bl value_push
     ldp x29, x30, [sp], #16
     ret
-prim_char_at:
-    stp x29, x30, [sp, #-16]!
-    bl prim_binary
-    bl string_point_at
-    bl value_push
-    ldp x29, x30, [sp], #16
-    ret
 prim_char_code:
     stp x29, x30, [sp, #-16]!
     bl value_pop
@@ -504,47 +498,40 @@ prim_char_code:
     bl value_push
     ldp x29, x30, [sp], #16
     ret
-prim_byte_len:
-    stp x29, x30, [sp, #-16]!
-    bl value_pop
-    ldr x0, [x0]
-    bl value_push
-    ldp x29, x30, [sp], #16
-    ret
-// Parser cursors are byte offsets; malformed UTF8 advances one original byte.
-prim_source_char_at:
+// Character positions are byte offsets; malformed UTF8 advances one original byte.
+prim_char_at:
     stp x29, x30, [sp, #-16]!
     bl prim_binary
     ldr x2, [x0]
     cmp x1, x2
-    b.hs full_source_char_missing
+    b.hs full_char_missing
     add x3, x0, #8
     add x0, x3, x1
     add x1, x3, x2
     bl utf8_decode
     bl string_from_codepoint
-    b full_source_char_push
-full_source_char_missing:
+    b full_char_push
+full_char_missing:
     mov x0, #0
-full_source_char_push:
+full_char_push:
     bl value_push
     ldp x29, x30, [sp], #16
     ret
-prim_source_next:
+prim_next_char_pos:
     stp x19, x30, [sp, #-16]!
     bl prim_binary
     ldr x2, [x0]
     add x19, x0, #8
     cmp x1, x2
-    b.hs full_source_next_end
+    b.hs full_next_char_end
     add x0, x19, x1
     add x1, x19, x2
     bl utf8_decode
     sub x0, x1, x19
-    b full_source_next_push
-full_source_next_end:
+    b full_next_char_push
+full_next_char_end:
     mov x0, x2
-full_source_next_push:
+full_next_char_push:
     bl value_push
     ldp x19, x30, [sp], #16
     ret
@@ -569,7 +556,7 @@ full_array_index_of_found:
     bl value_push
     ldp x29, x30, [sp], #16
     ret
-// String search compares decoded scalars and returns a code-point position.
+// String search compares decoded scalars and returns a byte offset for charAt.
 prim_string_index_of:
     stp x19, x20, [sp, #-80]!
     stp x21, x25, [sp, #16]
@@ -612,7 +599,7 @@ full_index_of_next:
     mov x1, x20
     bl utf8_decode
     mov x27, x1
-    add x26, x26, #1
+    sub x26, x27, x19
     b full_index_of_outer
 full_index_of_missing:
     mov x26, #-1

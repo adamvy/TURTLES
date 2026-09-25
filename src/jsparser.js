@@ -290,7 +290,7 @@ scope.eval$(`// Early-bound generated instructions cannot be shadowed by JS vari
     } action }
     'notPrefix  { | m super { | "  !" +$ } action }
     'unaryMinus { | m super { a let a 0 nil false PStream super .number () :number |
-      number { | number .pos a sourceLen = } &&
+      number { | number .pos a len = } &&
         { | '- a +$ } { | a "  __js$neg" +$ } ifelse
     } action }
     'iPrefix    { | m super { a | [ " '" a 1 @ "  ?? 1 " a 0 @ '++ =$ { | '+ } { | '- } ifelse "  __js$dup :" a 1 @ ] join } action }
@@ -313,7 +313,7 @@ scope.eval$(`// REPL adapters for the upstream-derived FormulaCompiler.
   text 0 nil compiler .ignore PStream
   [ compiler .ignore opt compiler .start ] 1 seq1 () :result
   result
-    { | result .pos text sourceLen =
+    { | result .pos text len =
       { | [ 'block result .value ] false __js$jsValidStatement
         { | result .value false __js$jsEmitStatements }
         { | false }
