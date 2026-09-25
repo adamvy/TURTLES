@@ -253,6 +253,21 @@ var scope = {
   }
 };
 
+// Explicit operations shared with the untagged ARM word runtime.
+scope['+$'] = bfn((a, b) => a + b);
+scope['=$'] = bfn((a, b) => a === b);
+scope['$<'] = bfn((a, b) => a < b);
+scope['$<='] = bfn((a, b) => a <= b);
+scope['$>'] = bfn((a, b) => a > b);
+scope['$>='] = bfn((a, b) => a >= b);
+scope['>$'] = fn(() => stack.push(String(stack.pop())));
+scope['print$'] = scope.print;
+scope['switch$'] = scope.switch;
+scope.strlen = scope.len;
+scope.byteLen = fn(() => stack.push(new TextEncoder().encode(stack.pop()).length));
+scope['$indexOf'] = scope.indexOf;
+scope.parseInt = fn(() => stack.push(Number.parseInt(stack.pop(), 10)));
+
 // scope.include('prefix.t0');
 scope.eval$(`
 1 1 = :true         // define true
@@ -272,10 +287,11 @@ scope.eval$(`
 { a f | [ a f do ] } ::map
 { a v f | v a f do } ::reduce
 { a p | [  a { c | c p () { | c } if } do ] } ::filter
-{ a | " " a { c | c + } do } ::join
+{ a | " " a { c | c +$ } do } ::join
+{ :found a value | 0 a len 1 - { i | a i @ value =$ { | i found<- } if } for -1 } ::indexOf$
 
 // A helper function for displaying section titles
-{ t | " " print t print } ::section
+{ t | " " print$ t print$ } ::section
 `);
 
 

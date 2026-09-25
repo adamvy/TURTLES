@@ -20,12 +20,12 @@ print
 */
 
 " Seq Parser" section
-[ 'this 'then 'that ] seq ::seqparser
+[ 'this lit 'then lit 'that lit ] seq ::seqparser
 ps seqparser print
 
 
 " Alt Parser" section
-[ 'think 'this ] alt :altparser
+[ 'think lit 'this lit ] alt :altparser
 ps altparser () .toString print
 
 
@@ -47,11 +47,11 @@ ps 'this lit opt () .toString print
 
 
 'that print
-ps [ 'that lit opt 'this ] seq () .toString print
+ps [ 'that lit opt 'this lit ] seq () .toString print
 
 
 'thisthen print
-ps [ 'this lit opt 'then ] seq () .toString print
+ps [ 'this lit opt 'then lit ] seq () .toString print
 
 
 " NotChars Parser" section

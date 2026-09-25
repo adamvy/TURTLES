@@ -9,7 +9,7 @@ core_init:
     bl arena_alloc
     str xzr, [x0]
     str xzr, [x0, #8]
-    mov x1, #10
+    mov x1, #0
     str x1, [x0, #16]
     str xzr, [x0, #24]
     adr x1, global_scope
@@ -23,7 +23,7 @@ core_init:
     adr x1, compiler_index
     str xzr, [x1]
     adr x1, compiler_input
-    mov x0, #10
+    mov x0, #0
     str x0, [x1]
     adr x1, outer_builder
     mov x0, #-1
@@ -31,7 +31,7 @@ core_init:
     adr x1, throw_pending
     str xzr, [x1]
     adr x1, throw_value
-    mov x0, #10
+    mov x0, #0
     str x0, [x1]
     adr x19, primitive_table
 core_init_primitive_next:
@@ -154,7 +154,7 @@ core_scope_input_parent:
     ldr x1, [x1]
     b core_scope_input_parent
 core_scope_input_missing:
-    mov x2, #10
+    mov x2, #0
 core_scope_input_found:
     adr x1, compiler_input
     str x2, [x1]
@@ -175,7 +175,7 @@ core_scope_index_found:
 
 // x0 str,x1 start,x2 end -> copied substring using compiler byte offsets.
 core_slice:
-    ldr x3, [x0, #8]
+    ldr x3, [x0]
     cmp x1, #0
     csel x1, xzr, x1, lt
     cmp x2, #0
@@ -187,7 +187,7 @@ core_slice:
     cmp x1, x2
     csel x4, x1, x2, ls
     csel x5, x2, x1, ls
-    add x0, x0, #16
+    add x0, x0, #8
     add x0, x0, x4
     sub x1, x5, x4
     b string_new
@@ -239,14 +239,13 @@ core_read_char:
     stp x19, x30, [sp, #-16]!
     adr x1, compiler_input
     ldr x1, [x1]
-    cmp x1, #18
-    b.ls core_read_char_end
+    cbz x1, core_read_char_end
     adr x2, compiler_index
     ldr x3, [x2]
-    ldr x4, [x1, #8]
+    ldr x4, [x1]
     cmp x3, x4
     b.hs core_read_char_end
-    add x19, x1, #16
+    add x19, x1, #8
     add x0, x19, x3
     add x1, x19, x4
     bl utf8_decode
@@ -269,22 +268,21 @@ core_read_symbol:
     stp x26, x30, [sp, #32]
     adr x0, compiler_input
     ldr x19, [x0]
-    cmp x19, #18
-    b.ls core_read_symbol_empty
+    cbz x19, core_read_symbol_empty
     adr x0, compiler_index
     ldr x20, [x0]
-    ldr x21, [x19, #8]
+    ldr x21, [x19]
     mov x25, #-1
 core_read_symbol_next:
     cmp x20, x21
     b.hs core_read_symbol_eof
     mov x26, x20
-    add x0, x19, #16
+    add x0, x19, #8
     add x1, x0, x21
     add x0, x0, x20
     bl utf8_decode
     sub x20, x1, x19
-    sub x20, x20, #16
+    sub x20, x20, #8
     bl core_is_space
     cbz x0, core_read_symbol_character
     cmp x25, #0
@@ -342,11 +340,6 @@ core_eval_source:
     stp x27, x28, [sp, #48]
     mov x25, x0
     mov x27, x1
-    cmp x0, #18
-    b.ls core_error_source
-    ldr x1, [x0]
-    cmp x1, #1
-    b.ne core_error_source
     adr x0, compiler_input
     ldr x19, [x0]
     str x25, [x0]
@@ -365,7 +358,7 @@ core_eval_next:
     ldr x0, [x0]
     cbnz x0, core_eval_done
     bl core_read_symbol
-    ldr x1, [x0, #8]
+    ldr x1, [x0]
     cbz x1, core_eval_done
     bl compile_symbol
     b core_eval_next
@@ -458,22 +451,17 @@ runtime_call:
     stp x21, x25, [sp, #16]
     stp x26, x27, [sp, #32]
     stp x28, x30, [sp, #48]
-    cmp x0, #18
-    b.ls core_error_function
-    ldr x1, [x0]
-    cmp x1, #2
-    b.ne core_error_function
     mov x19, x0
-    ldr x20, [x19, #8]
+    ldr x20, [x19]
     ldr x21, [x20, #16]
     add x0, x21, #1
     lsl x0, x0, #3
     bl arena_alloc
     mov x25, x0
-    ldr x0, [x19, #16]
+    ldr x0, [x19, #8]
     str x0, [x25]
     mov x26, #1
-    mov x0, #10
+    mov x0, #0
 core_call_initialize:
     cmp x26, x21
     b.hi core_call_parameters
@@ -527,13 +515,10 @@ core_op_closure:
     ldr x19, [x0, #8]
     adr x0, current_frame
     ldr x20, [x0]
-    mov x0, #32
+    mov x0, #16
     bl heap_alloc
-    mov x1, #2
-    str x1, [x0]
-    str x19, [x0, #8]
-    str x20, [x0, #16]
-    str xzr, [x0, #24]
+    str x19, [x0]
+    str x20, [x0, #8]
     bl value_push
     ldp x29, x30, [sp, #16]
     ldp x19, x20, [sp], #32
@@ -582,7 +567,6 @@ core_op_ip:
     // Source cursors use byte offsets, like sourceCharAt and PStream.pos.
     adr x0, compiler_index
     ldr x0, [x0]
-    bl number_from_int
     bl value_push
     ldp x29, x30, [sp], #16
     ret
@@ -628,10 +612,7 @@ core_local_change:
     bl core_local_address
     mov x19, x0
     ldr x0, [x19]
-    bl value_to_number
-    scvtf d1, x20
-    fadd d0, d0, d1
-    bl number_box
+    add x0, x0, x20
     str x0, [x19]
     ldp x29, x30, [sp, #16]
     ldp x19, x20, [sp], #32
@@ -657,7 +638,6 @@ core_op_scope_lookup:
     stp x29, x30, [sp, #16]
     ldr x19, [x0, #8]
     bl value_pop
-    bl value_to_string
     adr x1, compiler_scope
     ldr x20, [x1]
     str x19, [x1]
@@ -755,14 +735,14 @@ compile_symbol:
     bl core_compile_entry
     b core_symbol_done
 core_symbol_fallback:
-    ldr x20, [x19, #8]
+    ldr x20, [x19]
     cbz x20, core_error_unknown
-    ldrb w21, [x19, #16]
+    ldrb w21, [x19, #8]
     cmp x21, #46
     b.eq core_symbol_method
     cmp x21, #58
     b.eq core_symbol_definition
-    add x0, x19, #15
+    add x0, x19, #7
     add x0, x0, x20
     ldrb w0, [x0]
     cmp x0, #58
@@ -803,7 +783,7 @@ core_symbol_definition:
     mov x1, #1
     cmp x20, #2
     b.lo core_symbol_definition_slice
-    ldrb w0, [x19, #17]
+    ldrb w0, [x19, #9]
     cmp x0, #58
     b.ne core_symbol_definition_slice
     mov x25, #1
@@ -831,9 +811,8 @@ core_symbol_quoted_name:
     b core_symbol_literal
 core_symbol_number:
     mov x0, x19
-    mov x1, #0
-    bl number_parse
-    bl number_box
+    bl word_parse
+    cbz x1, core_error_integer
 core_symbol_literal:
     mov x1, x0
     adr x0, core_op_literal
@@ -922,12 +901,12 @@ core_compile_block:
     str xzr, [sp, #96]
 core_block_parameter_next:
     bl core_read_symbol
-    ldr x1, [x0, #8]
+    ldr x1, [x0]
     cbz x1, core_error_unterminated_block
     str x0, [sp, #80]
     cmp x1, #1
     b.ne core_block_check_let
-    ldrb w1, [x0, #16]
+    ldrb w1, [x0, #8]
     cmp x1, #124
     b.eq core_block_parameters_done
 core_block_check_let:
@@ -936,10 +915,10 @@ core_block_check_let:
     cbnz x0, core_block_parameters_done
     ldr x0, [sp, #80]
     cbnz x27, core_block_parameter_add
-    ldrb w1, [x0, #16]
+    ldrb w1, [x0, #8]
     cmp x1, #58
     b.ne core_block_parameter_add
-    ldr x2, [x0, #8]
+    ldr x2, [x0]
     mov x1, #1
     bl core_slice
     str x0, [sp, #72]
@@ -984,16 +963,16 @@ core_block_parameters_bound:
     cbz x0, core_block_body_next
 core_block_local_next:
     bl core_read_symbol
-    ldr x1, [x0, #8]
+    ldr x1, [x0]
     cbz x1, core_error_unterminated_block
     str x0, [sp, #80]
     cmp x1, #1
     b.ne core_block_local_check
-    ldrb w1, [x0, #16]
+    ldrb w1, [x0, #8]
     cmp x1, #124
     b.eq core_block_body_next
 core_block_local_check:
-    ldrb w1, [x0, #16]
+    ldrb w1, [x0, #8]
     cmp x1, #58
     b.eq core_block_local_define
     bl compile_symbol
@@ -1002,7 +981,7 @@ core_block_local_check:
     cbnz x0, core_block_aborted
     b core_block_local_next
 core_block_local_define:
-    ldr x2, [x0, #8]
+    ldr x2, [x0]
     mov x1, #1
     bl core_slice
     add x28, x28, #1
@@ -1013,11 +992,11 @@ core_block_local_define:
     b core_block_local_next
 core_block_body_next:
     bl core_read_symbol
-    ldr x1, [x0, #8]
+    ldr x1, [x0]
     cbz x1, core_error_unterminated_block
     cmp x1, #1
     b.ne core_block_body_compile
-    ldrb w1, [x0, #16]
+    ldrb w1, [x0, #8]
     cmp x1, #125
     b.eq core_block_complete
 core_block_body_compile:
@@ -1111,7 +1090,7 @@ core_compile_js:
     mov x21, x20
 core_js_scan:
     bl core_read_symbol
-    ldr x1, [x0, #8]
+    ldr x1, [x0]
     cbz x1, core_error_unterminated_js
     adr x1, core_str_js_close
     bl string_equal
@@ -1134,11 +1113,7 @@ core_js_source:
     ldr x0, [x0]
     cbnz x0, core_js_done
     bl value_pop
-    cmp x0, #18
-    b.ls core_error_js_invalid
-    ldr x1, [x0]
-    cmp x1, #1
-    b.ne core_error_js_invalid
+    cbz x0, core_error_js_invalid
     bl core_compile_source
 core_js_done:
     ldp x26, x30, [sp, #32]
@@ -1157,7 +1132,7 @@ core_read_until:
     mov x27, x1
     adr x0, compiler_input
     ldr x19, [x0]
-    ldr x25, [x19, #8]
+    ldr x25, [x19]
     adr x0, compiler_index
     ldr x20, [x0]
     mov x21, x20
@@ -1170,7 +1145,7 @@ core_until_match:
     cmp x28, x27
     b.hs core_until_found
     add x0, x21, x28
-    add x1, x19, #16
+    add x1, x19, #8
     add x1, x1, x0
     ldrb w0, [x1]
     cmp x0, x26
@@ -1257,7 +1232,7 @@ core_compile_block_comment:
     stp x29, x30, [sp, #-16]!
 core_block_comment_next:
     bl core_read_symbol
-    ldr x1, [x0, #8]
+    ldr x1, [x0]
     cbz x1, core_error_unterminated_comment
     adr x1, core_str_comment_end
     bl string_equal
@@ -1267,11 +1242,17 @@ core_block_comment_next:
 
 // Switch options retain one node per upstream JS closure. Compile-time keys
 // execute exactly one node, including multi-node auto-call/name expansion.
+core_compile_string_switch:
+    adr x2, string_equal
+    b core_compile_switch_with
 core_compile_switch:
+    adr x2, value_equal
+core_compile_switch_with:
     stp x19, x20, [sp, #-96]!
     stp x21, x25, [sp, #16]
     stp x26, x27, [sp, #32]
     stp x28, x30, [sp, #48]
+    str x2, [sp, #64]
     adr x0, compiler_builder
     ldr x19, [x0]
     mov x0, #24
@@ -1284,7 +1265,7 @@ core_compile_switch:
     str x20, [x0]
 core_switch_compile_next:
     bl core_read_symbol
-    ldr x1, [x0, #8]
+    ldr x1, [x0]
     cbz x1, core_error_unterminated_switch
     mov x21, x0
     adr x1, core_str_end
@@ -1301,7 +1282,7 @@ core_switch_compile_done:
     // builder remains current for nested emit/immediate compiler operations.
     adr x0, compiler_builder
     str x19, [x0]
-    mov x0, #32
+    mov x0, #40
     bl arena_alloc
     mov x21, x0
     str xzr, [x21]
@@ -1309,6 +1290,8 @@ core_switch_compile_done:
     str x0, [x21, #8]
     str xzr, [x21, #16]
     str x20, [x21, #24]
+    ldr x0, [sp, #64]
+    str x0, [x21, #32]
     ldr x25, [x20]
     mov x26, #0
 core_switch_key_next:
@@ -1366,7 +1349,8 @@ core_switch_choose:
     cbz x21, core_switch_default
     mov x0, x20
     ldr x1, [x21]
-    bl value_equal
+    ldr x2, [x19, #32]
+    blr x2
     cbnz x0, core_switch_chosen
     ldr x21, [x21, #16]
     b core_switch_choose
@@ -1383,11 +1367,8 @@ core_switch_execute:
     ldp x19, x20, [sp], #48
     ret
 
-core_error_source:
-    adr x0, core_message_source
-    b runtime_error
-core_error_function:
-    adr x0, core_message_function
+core_error_integer:
+    adr x0, core_message_integer
     b runtime_error
 core_error_unknown:
     adr x0, core_message_unknown
@@ -1436,7 +1417,7 @@ compiler_token_start: .quad 0
 compiler_builder: .quad 0
 outer_builder: .quad -1
 throw_pending: .quad 0
-throw_value: .quad 10
+throw_value: .quad 0
 repl_saved_sp: .quad 0
 core_local_handlers:
     .quad core_op_local_read, core_op_local_write
@@ -1444,6 +1425,7 @@ core_local_handlers:
 core_special_table:
     .quad core_str_open_block, core_compile_block
     .quad core_str_switch, core_compile_switch
+    .quad core_str_string_switch, core_compile_string_switch
     .quad core_str_immediate, core_compile_immediate
     .quad core_str_emit, core_compile_emit
     .quad core_str_quote, core_compile_quote
@@ -1457,8 +1439,7 @@ core_special_table:
     .quad core_str_js_open, core_compile_js
     .quad 0, 0
 
-core_message_source: .asciz "eval requires a string"
-core_message_function: .asciz "value is not a function"
+core_message_integer: .asciz "expected signed 64-bit integer"
 core_message_unknown: .asciz "unknown word"
 core_message_frame: .asciz "lexical frame is unavailable"
 core_message_binding: .asciz "invalid compiler binding"
@@ -1473,102 +1454,105 @@ core_message_js_missing: .asciz "js{ requires the loaded jsCompile language adap
 core_message_js_invalid: .asciz "invalid JS-like source in js{ block"
 .balign 8
 core_str_empty:
-    .quad 1, 0
+    .quad 0
     .byte 0
 .balign 8
 core_str_ampersand:
-    .quad 1, 1
+    .quad 1
     .byte 38, 0
 .balign 8
 core_str_call:
-    .quad 1, 2
+    .quad 2
     .byte 40, 41, 0
 .balign 8
 core_str_colon:
-    .quad 1, 1
+    .quad 1
     .byte 58, 0
 .balign 8
 core_str_increment:
-    .quad 1, 2
+    .quad 2
     .byte 43, 43, 0
 .balign 8
 core_str_decrement:
-    .quad 1, 2
+    .quad 2
     .byte 45, 45, 0
 .balign 8
 core_str_return_suffix:
-    .quad 1, 2
+    .quad 2
     .byte 60, 45, 0
 .balign 8
 core_str_let:
-    .quad 1, 3
+    .quad 3
     .byte 108, 101, 116, 0
 .balign 8
 core_str_comment_end:
-    .quad 1, 2
+    .quad 2
     .byte 42, 47, 0
 .balign 8
 core_str_end:
-    .quad 1, 3
+    .quad 3
     .byte 101, 110, 100, 0
 .balign 8
 core_str_open_block:
-    .quad 1, 1
+    .quad 1
     .byte 123, 0
 .balign 8
 core_str_switch:
-    .quad 1, 6
+    .quad 6
     .byte 115, 119, 105, 116, 99, 104, 0
 .balign 8
 core_str_immediate:
-    .quad 1, 2
+    .quad 2
     .byte 105, 91, 0
 .balign 8
 core_str_emit:
-    .quad 1, 4
+    .quad 4
     .byte 101, 109, 105, 116, 0
 .balign 8
 core_str_quote:
-    .quad 1, 1
+    .quad 1
     .byte 34, 0
 .balign 8
 core_str_triple:
-    .quad 1, 3
+    .quad 3
     .byte 34, 34, 34, 0
 .balign 8
 core_str_line_comment:
-    .quad 1, 2
+    .quad 2
     .byte 47, 47, 0
 .balign 8
 core_str_block_comment:
-    .quad 1, 2
+    .quad 2
     .byte 47, 42, 0
 .balign 8
 core_str_scope_lookup:
-    .quad 1, 2
+    .quad 2
     .byte 63, 63, 0
 .balign 8
 core_str_input:
-    .quad 1, 6
+    .quad 6
     .byte 105, 110, 112, 117, 116, 95, 0
 .balign 8
 core_str_ip:
-    .quad 1, 3
+    .quad 3
     .byte 105, 112, 95, 0
 .balign 8
 core_str_return:
-    .quad 1, 2
+    .quad 2
     .byte 60, 45, 0
 .balign 8
 core_str_js_open:
-    .quad 1, 3
+    .quad 3
     .byte 106, 115, 123, 0
 .balign 8
 core_str_js_close:
-    .quad 1, 3
+    .quad 3
     .byte 125, 106, 115, 0
 .balign 8
 core_str_js_compile:
-    .quad 1, 9
+    .quad 9
     .byte 106, 115, 67, 111, 109, 112, 105, 108, 101, 0
 .balign 8
+core_str_string_switch:
+    .quad 7
+    .asciz "switch$"

@@ -1,4 +1,4 @@
-// All runtime primitives in T0.js. Compiler forms live in core.s.
+// Raw-word primitives. The caller selects integer, string, array or block operations.
 prim_binary:
     stp x29, x30, [sp, #-16]!
     bl value_pop
@@ -7,215 +7,121 @@ prim_binary:
     ldp x1, xzr, [sp], #16
     ldp x29, x30, [sp], #16
     ret
-prim_numeric:
+prim_add:
     stp x29, x30, [sp, #-16]!
     bl prim_binary
-    stp x1, xzr, [sp, #-16]!
-    bl value_to_number
-    fmov x1, d0
-    ldr x0, [sp]
-    str x1, [sp]
-    bl value_to_number
-    fmov d1, d0
-    ldp x0, xzr, [sp], #16
-    fmov d0, x0
-    ldp x29, x30, [sp], #16
-    ret
-prim_boolean:
-    lsl x0, x0, #2
-    add x0, x0, #2
-    b value_push
-prim_add:
-    stp x19, x20, [sp, #-32]!
-    stp x29, x30, [sp, #16]
-    bl prim_binary
-    mov x20, x1
-    bl value_to_primitive
-    mov x19, x0
-    mov x0, x20
-    bl value_to_primitive
-    mov x20, x0
-    cmp x19, #18
-    b.ls full_add_check_b
-    ldr x1, [x19]
-    cmp x1, #1
-    b.eq full_add_strings
-full_add_check_b:
-    cmp x20, #18
-    b.ls full_add_numbers
-    ldr x1, [x20]
-    cmp x1, #1
-    b.eq full_add_strings
-full_add_numbers:
-    mov x0, x19
-    bl value_to_number
-    fmov x19, d0
-    mov x0, x20
-    bl value_to_number
-    fmov d1, x19
-    fadd d0, d1, d0
-    bl number_box
-    b full_add_push
-full_add_strings:
-    mov x0, x19
-    bl value_to_string
-    mov x19, x0
-    mov x0, x20
-    bl value_to_string
-    mov x1, x0
-    mov x0, x19
-    bl string_concat
-full_add_push:
+    add x0, x0, x1
     bl value_push
-    ldp x29, x30, [sp, #16]
-    ldp x19, x20, [sp], #32
+    ldp x29, x30, [sp], #16
     ret
 prim_sub:
     stp x29, x30, [sp, #-16]!
-    bl prim_numeric
-    fsub d0, d0, d1
-    bl number_box
+    bl prim_binary
+    sub x0, x0, x1
     bl value_push
     ldp x29, x30, [sp], #16
     ret
 prim_mul:
     stp x29, x30, [sp, #-16]!
-    bl prim_numeric
-    fmul d0, d0, d1
-    bl number_box
+    bl prim_binary
+    mul x0, x0, x1
     bl value_push
     ldp x29, x30, [sp], #16
     ret
 prim_div:
     stp x29, x30, [sp, #-16]!
-    bl prim_numeric
-    fdiv d0, d0, d1
-    bl number_box
+    bl prim_binary
+    cbz x1, full_division_zero
+    sdiv x0, x0, x1
     bl value_push
     ldp x29, x30, [sp], #16
     ret
 prim_mod:
     stp x29, x30, [sp, #-16]!
-    bl prim_numeric
-    bl number_mod
-    bl number_box
+    bl prim_binary
+    cbz x1, full_division_zero
+    sdiv x2, x0, x1
+    msub x0, x2, x1, x0
     bl value_push
     ldp x29, x30, [sp], #16
     ret
 prim_pow:
     stp x29, x30, [sp, #-16]!
-    bl prim_numeric
-    bl number_pow
-    bl number_box
+    bl prim_binary
+    cmp x1, #0
+    b.lt full_negative_exponent
+    mov x2, #1
+full_pow_loop:
+    cbz x1, full_pow_done
+    tbz x1, #0, full_pow_square
+    mul x2, x2, x0
+full_pow_square:
+    mul x0, x0, x0
+    lsr x1, x1, #1
+    b full_pow_loop
+full_pow_done:
+    mov x0, x2
     bl value_push
     ldp x29, x30, [sp], #16
     ret
 prim_percent:
     stp x29, x30, [sp, #-16]!
     bl value_pop
-    bl value_to_number
-    mov x0, #100
-    scvtf d1, x0
-    fdiv d0, d0, d1
-    bl number_box
+    mov x1, #100
+    sdiv x0, x0, x1
     bl value_push
     ldp x29, x30, [sp], #16
     ret
 prim_equal:
     stp x29, x30, [sp, #-16]!
     bl prim_binary
-    bl value_equal
-    bl prim_boolean
+    cmp x0, x1
+    cset x0, eq
+    bl value_push
     ldp x29, x30, [sp], #16
     ret
 prim_not_equal:
     stp x29, x30, [sp, #-16]!
     bl prim_binary
-    bl value_equal
-    cmp x0, #0
-    cset x0, eq
-    bl prim_boolean
+    cmp x0, x1
+    cset x0, ne
+    bl value_push
     ldp x29, x30, [sp], #16
-    ret
-// Compare preserves JS string ordering and numeric coercion. Output native
-// comparison -1/0/1; unordered NaN=2 (all relational operators false).
-prim_compare:
-    stp x19, x20, [sp, #-32]!
-    stp x29, x30, [sp, #16]
-    bl prim_binary
-    mov x20, x1
-    bl value_to_primitive
-    mov x19, x0
-    mov x0, x20
-    bl value_to_primitive
-    mov x20, x0
-    cmp x19, #18
-    b.ls full_compare_numbers
-    cmp x20, #18
-    b.ls full_compare_numbers
-    ldr x1, [x19]
-    ldr x2, [x20]
-    cmp x1, #1
-    b.ne full_compare_numbers
-    cmp x2, #1
-    b.ne full_compare_numbers
-    mov x0, x19
-    mov x1, x20
-    bl string_compare
-    b full_compare_done
-full_compare_numbers:
-    mov x0, x19
-    bl value_to_number
-    fmov x19, d0
-    mov x0, x20
-    bl value_to_number
-    fmov d1, x19
-    fcmp d1, d0
-    b.vs full_compare_nan
-    b.lt full_compare_less
-    cset x0, gt
-    b full_compare_done
-full_compare_less:
-    mov x0, #-1
-    b full_compare_done
-full_compare_nan:
-    mov x0, #2
-full_compare_done:
-    ldp x29, x30, [sp, #16]
-    ldp x19, x20, [sp], #32
     ret
 prim_less:
     stp x29, x30, [sp, #-16]!
-    bl prim_compare
-    cmp x0, #0
+    bl prim_binary
+    cmp x0, x1
     cset x0, lt
-    bl prim_boolean
+    bl value_push
     ldp x29, x30, [sp], #16
     ret
 prim_less_equal:
     stp x29, x30, [sp, #-16]!
-    bl prim_compare
-    cmp x0, #0
+    bl prim_binary
+    cmp x0, x1
     cset x0, le
-    bl prim_boolean
+    bl value_push
     ldp x29, x30, [sp], #16
     ret
 prim_greater:
     stp x29, x30, [sp, #-16]!
-    bl prim_compare
-    cmp x0, #1
-    cset x0, eq
-    bl prim_boolean
+    bl prim_binary
+    cmp x0, x1
+    cset x0, gt
+    bl value_push
     ldp x29, x30, [sp], #16
     ret
 prim_greater_equal:
     stp x29, x30, [sp, #-16]!
-    bl prim_compare
-    cmp x0, #1
-    cset x0, ls
-    bl prim_boolean
+    bl prim_binary
+    cmp x0, x1
+    cset x0, ge
+    bl value_push
     ldp x29, x30, [sp], #16
     ret
+prim_boolean:
+    b value_push
 prim_not:
     stp x29, x30, [sp, #-16]!
     bl value_pop
@@ -258,7 +164,7 @@ prim_lazy_and:
     bl runtime_call
     b full_lazy_done
 full_lazy_false:
-    mov x0, #2
+    mov x0, #0
     bl value_push
 full_lazy_done:
     ldp x29, x30, [sp], #16
@@ -274,7 +180,7 @@ prim_lazy_or:
     bl runtime_call
     b full_lazy_done
 full_lazy_true:
-    mov x0, #6
+    mov x0, #1
     bl value_push
     b full_lazy_done
 prim_if:
@@ -334,25 +240,7 @@ prim_call:
 prim_eval:
     stp x29, x30, [sp, #-16]!
     bl value_pop
-    // Upstream eval$ reads src.length before calling src.charAt. Primitive
-    // numbers/booleans and zero-length arrays/functions therefore do nothing.
-    cmp x0, #10
-    b.eq full_null_access
-    cmp x0, #14
-    b.eq full_null_access
-    cmp x0, #18
-    b.ls full_eval_done
-    ldr x1, [x0]
-    cmp x1, #1
-    b.eq full_eval_source
-    cmp x1, #3
-    b.ne full_eval_done
-    ldr x1, [x0, #8]
-    cbnz x1, full_type_error
-    b full_eval_done
-full_eval_source:
     bl t0_eval
-full_eval_done:
     ldp x29, x30, [sp], #16
     ret
 prim_print:
@@ -362,61 +250,62 @@ prim_print:
     bl newline
     ldp x29, x30, [sp], #16
     ret
+prim_string_print:
+    stp x29, x30, [sp, #-16]!
+    bl value_pop
+    bl print_string
+    bl newline
+    ldp x29, x30, [sp], #16
+    ret
 prim_debugger:
     ret
 prim_const:
-    stp x19, x30, [sp, #-16]!
+    stp x29, x30, [sp, #-16]!
     bl prim_binary
-    mov x19, x0
+    mov x3, x0
     mov x0, x1
-    bl value_to_string
-    mov x1, x19
+    mov x1, x3
     mov x2, #0
     bl core_define
-    ldp x19, x30, [sp], #16
+    ldp x29, x30, [sp], #16
     ret
 prim_semicolon:
-    stp x19, x30, [sp, #-16]!
+    stp x29, x30, [sp, #-16]!
     bl prim_binary
-    mov x19, x1
-    bl value_to_string
-    mov x1, x19
     mov x2, #0
     bl core_define
-    ldp x19, x30, [sp], #16
+    ldp x29, x30, [sp], #16
     ret
-prim_parse_float:
+prim_parse_int:
     stp x29, x30, [sp, #-16]!
     bl value_pop
-    bl value_to_string
-    mov x1, #0
-    bl number_parse
-    bl number_box
+    bl word_parse
+    cbz x1, full_invalid_integer
+    bl value_push
+    ldp x29, x30, [sp], #16
+    ret
+prim_to_string:
+    stp x29, x30, [sp, #-16]!
+    bl value_pop
+    bl word_format
     bl value_push
     ldp x29, x30, [sp], #16
     ret
 prim_pick:
     stp x29, x30, [sp, #-16]!
     bl value_pop
-    bl value_to_number
-    mov x0, #0x40800000
-    sub x1, x22, x0
+    mov x1, #0x40800000
+    sub x1, x22, x1
     lsr x1, x1, #3
-    sub x1, x1, #1
-    scvtf d1, x1
-    fsub d0, d1, d0
-    fcvtzs x2, d0
-    scvtf d1, x2
-    fcmp d0, d1
-    b.ne full_pick_undefined
-    cmp x2, x1
-    b.hi full_pick_undefined
-    cmp x2, #0
-    b.lt full_pick_undefined
-    ldr x0, [x0, x2, lsl #3]
+    cmp x0, x1
+    b.hs full_pick_missing
+    sub x1, x22, #8
+    lsl x0, x0, #3
+    sub x1, x1, x0
+    ldr x0, [x1]
     b full_pick_push
-full_pick_undefined:
-    mov x0, #10
+full_pick_missing:
+    mov x0, #0
 full_pick_push:
     bl value_push
     ldp x29, x30, [sp], #16
@@ -439,16 +328,13 @@ full_array_find_marker:
     adr x1, str_array_marker
     bl value_equal
     cbnz x0, full_array_literal_allocate
-    mov x0, #0x40800000
-    cmp x19, x0
-    b.eq full_array_literal_allocate
     add x20, x20, #1
     b full_array_find_marker
 full_array_literal_allocate:
     mov x0, x20
     bl array_new
     mov x21, x0
-    ldr x1, [x21, #24]
+    ldr x1, [x21, #16]
     add x2, x19, #8
 full_array_literal_copy:
     cbz x20, full_array_literal_done
@@ -489,31 +375,8 @@ prim_set:
 prim_len:
     stp x29, x30, [sp, #-16]!
     bl value_pop
-    adr x1, str_length
-    bl array_get
+    ldr x0, [x0]
     bl value_push
-    ldp x29, x30, [sp], #16
-    ret
-// For a JS for(i=0;i<length;i++) constructor, positive fractions round up.
-full_constructor_length:
-    stp x29, x30, [sp, #-16]!
-    bl value_to_number
-    fcmp d0, #0
-    b.le full_constructor_zero
-    b.vs full_constructor_zero
-    fcvtzs x0, d0
-    scvtf d1, x0
-    fcmp d1, d0
-    b.eq full_constructor_count
-    add x0, x0, #1
-full_constructor_count:
-    mov x1, #0xffffffff
-    cmp x0, x1
-    b.hi fatal_arena
-    ldp x29, x30, [sp], #16
-    ret
-full_constructor_zero:
-    mov x0, #0
     ldp x29, x30, [sp], #16
     ret
 prim_array_value:
@@ -521,10 +384,9 @@ prim_array_value:
     stp x29, x30, [sp, #16]
     bl prim_binary
     mov x20, x1
-    bl full_constructor_length
     mov x19, x0
     bl array_new
-    ldr x1, [x0, #24]
+    ldr x1, [x0, #16]
 full_array_value_fill:
     cbz x19, full_array_value_done
     str x20, [x1]
@@ -548,16 +410,9 @@ prim_array_fn:
     mov x21, x0
     mov x25, #0
 full_array_fn_loop:
-    // JS tests i < length on every iteration. The callback may mutate an
-    // array used as length, or return before a huge requested allocation.
-    mov x0, x19
-    bl value_to_number
-    scvtf d1, x25
-    fcmp d1, d0
-    b.vs full_array_fn_push
+    cmp x25, x19
     b.ge full_array_fn_push
     mov x0, x25
-    bl number_from_int
     bl value_push
     mov x0, x20
     bl runtime_call
@@ -578,135 +433,108 @@ full_array_fn_done:
     ldp x21, x25, [sp, #16]
     ldp x19, x20, [sp], #48
     ret
-prim_string_query:
+prim_concat:
     stp x29, x30, [sp, #-16]!
-    bl value_pop
-    bl value_kind
-    cmp x0, #1
-    cset x0, eq
-    bl prim_boolean
+    bl prim_binary
+    bl string_concat
+    bl value_push
     ldp x29, x30, [sp], #16
     ret
-prim_array_query:
+prim_string_equal:
+    stp x29, x30, [sp, #-16]!
+    bl prim_binary
+    bl string_equal
+    bl value_push
+    ldp x29, x30, [sp], #16
+    ret
+prim_string_less:
+    stp x29, x30, [sp, #-16]!
+    bl prim_binary
+    bl string_compare
+    cmp x0, #0
+    cset x0, lt
+    bl value_push
+    ldp x29, x30, [sp], #16
+    ret
+prim_string_less_equal:
+    stp x29, x30, [sp, #-16]!
+    bl prim_binary
+    bl string_compare
+    cmp x0, #0
+    cset x0, le
+    bl value_push
+    ldp x29, x30, [sp], #16
+    ret
+prim_string_greater:
+    stp x29, x30, [sp, #-16]!
+    bl prim_binary
+    bl string_compare
+    cmp x0, #0
+    cset x0, gt
+    bl value_push
+    ldp x29, x30, [sp], #16
+    ret
+prim_string_greater_equal:
+    stp x29, x30, [sp, #-16]!
+    bl prim_binary
+    bl string_compare
+    cmp x0, #0
+    cset x0, ge
+    bl value_push
+    ldp x29, x30, [sp], #16
+    ret
+prim_string_len:
     stp x29, x30, [sp, #-16]!
     bl value_pop
-    bl value_kind
-    cmp x0, #3
-    cset x0, eq
-    bl prim_boolean
+    bl string_point_length
+    bl value_push
     ldp x29, x30, [sp], #16
     ret
 prim_char_at:
-    stp x19, x20, [sp, #-48]!
-    stp x21, x25, [sp, #16]
-    stp x29, x30, [sp, #32]
+    stp x29, x30, [sp, #-16]!
     bl prim_binary
-    mov x19, x0
-    mov x20, x1
-    adr x1, str_length
-    bl array_get
-    bl value_to_number
-    fmov x21, d0
-    mov x0, x20
-    bl value_to_number
-    fmov d1, x21
-    fcmp d0, d1
-    b.vs full_char_at_null
-    b.ge full_char_at_null
-    mov x0, x19
-    // Preserve the numeric index over type validation.
-    fmov x20, d0
-    bl full_require_string
-    fmov d0, x20
-    fcvtzs x1, d0
-    cmp x1, #0
-    b.lt full_char_at_empty
-    mov x0, x19
     bl string_point_at
-    cbz x0, full_char_at_empty
-    b full_char_at_push
-full_char_at_null:
-    mov x0, #14
-    b full_char_at_push
-full_char_at_empty:
-    adr x0, str_empty
-full_char_at_push:
     bl value_push
-    ldp x29, x30, [sp, #32]
-    ldp x21, x25, [sp, #16]
-    ldp x19, x20, [sp], #48
+    ldp x29, x30, [sp], #16
     ret
-// ARM charCode constructs one Unicode scalar; invalid numeric input -> U+FFFD.
 prim_char_code:
     stp x29, x30, [sp, #-16]!
     bl value_pop
-    bl value_to_number
-    fcvtzs x0, d0
-    scvtf d1, x0
-    fcmp d0, d1
-    b.eq full_char_code_scalar
-    mov x0, #-1
-full_char_code_scalar:
     bl string_from_codepoint
     bl value_push
     ldp x29, x30, [sp], #16
     ret
-// Explicit storage length; ordinary len continues to count code points.
 prim_byte_len:
     stp x29, x30, [sp, #-16]!
     bl value_pop
-    bl full_require_string
-    ldr x0, [x0, #8]
-    bl number_from_int
+    ldr x0, [x0]
     bl value_push
     ldp x29, x30, [sp], #16
     ret
-
-// Parser cursors use byte offsets. Pop (string, offset), validate the string,
-// and return x0 string, x1 integral byte offset (-1 if invalid), x2 byte length.
-full_source_position:
-    stp x19, x20, [sp, #-32]!
-    stp x29, x30, [sp, #16]
-    bl prim_binary
-    mov x19, x0
-    mov x20, x1
-    bl full_require_string
-    mov x0, x20
-    bl value_to_number
-    fcvtzs x1, d0
-    scvtf d1, x1
-    fcmp d0, d1
-    mov x2, #-1
-    csel x1, x1, x2, eq
-    mov x0, x19
-    ldr x2, [x0, #8]
-    ldp x29, x30, [sp, #16]
-    ldp x19, x20, [sp], #32
-    ret
-// (string byteOffset -- character|null). Interior/invalid bytes decode U+FFFD.
+// Parser cursors are byte offsets; malformed UTF8 advances one original byte.
 prim_source_char_at:
     stp x29, x30, [sp, #-16]!
-    bl full_source_position
+    bl prim_binary
+    ldr x2, [x0]
     cmp x1, x2
     b.hs full_source_char_missing
-    add x3, x0, #16
+    add x3, x0, #8
     add x0, x3, x1
     add x1, x3, x2
     bl utf8_decode
     bl string_from_codepoint
     b full_source_char_push
 full_source_char_missing:
-    mov x0, #14
+    mov x0, #0
 full_source_char_push:
     bl value_push
     ldp x29, x30, [sp], #16
     ret
-// (string byteOffset -- nextByteOffset). EOF/out-of-range clamps to byte length.
-// Invalid UTF8 advances one original byte, regardless of replacement encoding.
 prim_source_next:
     stp x19, x30, [sp, #-16]!
-    bl full_source_position
-    add x19, x0, #16
+    bl prim_binary
+    ldr x2, [x0]
+    add x19, x0, #8
     cmp x1, x2
     b.hs full_source_next_end
     add x0, x19, x1
@@ -717,38 +545,46 @@ prim_source_next:
 full_source_next_end:
     mov x0, x2
 full_source_next_push:
-    bl number_from_int
     bl value_push
     ldp x19, x30, [sp], #16
     ret
-
+// Array indexOf compares raw words, including zero elements.
 prim_index_of:
+    stp x29, x30, [sp, #-16]!
+    bl prim_binary
+    ldr x2, [x0]
+    ldr x3, [x0, #16]
+    mov x0, #0
+full_array_index_of_next:
+    cmp x0, x2
+    b.hs full_array_index_of_missing
+    ldr x4, [x3, x0, lsl #3]
+    cmp x4, x1
+    b.eq full_array_index_of_found
+    add x0, x0, #1
+    b full_array_index_of_next
+full_array_index_of_missing:
+    mov x0, #-1
+full_array_index_of_found:
+    bl value_push
+    ldp x29, x30, [sp], #16
+    ret
+// String search compares decoded scalars and returns a code-point position.
+prim_string_index_of:
     stp x19, x20, [sp, #-80]!
     stp x21, x25, [sp, #16]
     stp x26, x27, [sp, #32]
     stp x28, xzr, [sp, #48]
     stp x29, x30, [sp, #64]
     bl prim_binary
-    mov x19, x0
-    mov x20, x1
-    cmp x19, #18
-    b.ls full_type_error
-    ldr x1, [x19]
-    cmp x1, #3
-    b.eq full_array_index_of
-    cmp x1, #1
-    b.ne full_type_error
-    mov x0, x20
-    bl value_to_string
-    ldr x25, [x0, #8]
-    add x21, x0, #16
+    ldr x25, [x1]
+    add x21, x1, #8
     add x25, x21, x25
-    ldr x20, [x19, #8]
-    add x19, x19, #16
+    ldr x20, [x0]
+    add x19, x0, #8
     add x20, x19, x20
     mov x27, x19
     mov x26, #0
-// Search decoded scalar sequences, returning a code-point position.
 full_index_of_outer:
     mov x9, x21
     mov x28, x27
@@ -778,26 +614,10 @@ full_index_of_next:
     mov x27, x1
     add x26, x26, #1
     b full_index_of_outer
-full_array_index_of:
-    mov x26, #0
-    ldr x21, [x19, #8]
-full_array_index_of_next:
-    cmp x26, x21
-    b.hs full_index_of_missing
-    ldr x1, [x19, #24]
-    ldr x0, [x1, x26, lsl #3]
-    cbz x0, full_array_index_of_skip_hole
-    mov x1, x20
-    bl value_equal
-    cbnz x0, full_index_of_found
-full_array_index_of_skip_hole:
-    add x26, x26, #1
-    b full_array_index_of_next
 full_index_of_missing:
     mov x26, #-1
 full_index_of_found:
     mov x0, x26
-    bl number_from_int
     bl value_push
     ldp x29, x30, [sp, #64]
     ldp x28, xzr, [sp, #48]
@@ -805,22 +625,11 @@ full_index_of_found:
     ldp x21, x25, [sp, #16]
     ldp x19, x20, [sp], #80
     ret
-full_require_string:
-    cmp x0, #18
-    b.ls full_type_error
-    ldr x1, [x0]
-    cmp x1, #1
-    b.ne full_type_error
-    ret
-full_type_error:
-    adr x0, full_type_message
-    b runtime_error
 prim_depth:
     stp x29, x30, [sp, #-16]!
     mov x0, #0x40800000
     sub x0, x22, x0
     lsr x0, x0, #3
-    bl number_from_int
     bl value_push
     ldp x29, x30, [sp], #16
     ret
@@ -833,7 +642,6 @@ prim_include:
     stp x19, x20, [sp, #-32]!
     stp x29, x30, [sp, #16]
     bl value_pop
-    bl value_to_string
     mov x19, x0
     adr x20, embedded_modules
 full_include_loop:
@@ -853,8 +661,21 @@ full_include_found:
 full_include_missing:
     adr x0, full_include_message
     b runtime_error
-full_type_message:
-    .asciz "operation requires another value type"
+full_division_zero:
+    adr x0, full_division_message
+    b runtime_error
+full_negative_exponent:
+    adr x0, full_exponent_message
+    b runtime_error
+full_invalid_integer:
+    adr x0, full_integer_message
+    b runtime_error
+full_division_message:
+    .asciz "division by zero"
+full_exponent_message:
+    .asciz "negative integer exponent"
+full_integer_message:
+    .asciz "invalid integer"
 full_array_syntax_message:
     .asciz "unmatched array close"
 full_include_message:

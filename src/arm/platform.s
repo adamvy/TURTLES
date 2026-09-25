@@ -73,7 +73,7 @@ value_pop:
     ldr x0, [x22]
     ret
 full_pop_empty:
-    mov x0, #10
+    mov x0, #0
     ret
 native_guard:
     mov x0, sp

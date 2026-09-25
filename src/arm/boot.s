@@ -2,10 +2,6 @@ _start:
     mov x0, #0x40c00000
     mov sp, x0
     msr daifset, #15
-    mrs x0, cpacr_el1
-    orr x0, x0, #0x300000
-    msr cpacr_el1, x0
-    isb
     mov x22, #0x40800000
     mov x23, #0x41000000
     mov x24, #0x48000000
@@ -16,8 +12,6 @@ _start:
     adr x0, full_skip_lf
     str xzr, [x0]
     adr x0, full_boot_complete
-    str xzr, [x0]
-    adr x0, stringify_active
     str xzr, [x0]
     adr x0, full_reader
     str xzr, [x0]
@@ -67,8 +61,6 @@ full_repl_recover:
     adr x1, str_empty
     str x1, [x0]
     adr x0, compiler_index
-    str xzr, [x0]
-    adr x0, stringify_active
     str xzr, [x0]
     // User values remain as in upstream after a partial evaluation error.
 full_repl:
@@ -167,7 +159,7 @@ full_boot_failed:
     adr x0, full_boot_failure_message
     b fatal_halt
 full_boot_banner:
-    .asciz "\r\nTURTLES / AArch64 bare metal\r\nNative T0 compiler + VM | binary64 | UTF-8 | no C\r\nMonotonic arena and heap: exhaustion HALTS until reboot.\r\nReaders: :t0 :js :som | :help\r\nMultiline input: :paste, source lines, then :end (:cancel to discard).\r\n"
+    .asciz "\r\nTURTLES / AArch64 bare metal\r\nNative T0 compiler + VM | raw 64-bit words | UTF-8 | no C\r\nMonotonic arena and heap: exhaustion HALTS until reboot.\r\nReaders: :t0 :js :som | :help\r\nMultiline input: :paste, source lines, then :end (:cancel to discard).\r\n"
 full_ready_message: .asciz "Raw T0 REPL ready.\r\n"
 full_prompt_t0: .asciz "t0> "
 full_prompt_js: .asciz "js> "
@@ -177,7 +169,7 @@ full_command_js: .asciz ":js"
 full_command_som: .asciz ":som"
 full_command_help: .asciz ":help"
 full_help_message:
-    .asciz "Readers: :t0 :js :som (preserve definitions and values).\r\nMultiline: :paste, source lines, :end; :cancel discards.\r\nT0 uses print; JS and SOM display the newest result.\r\nIn T0, reset clears the environment and returns to t0>.\r\n"
+    .asciz "Readers: :t0 :js :som (preserve definitions and values).\r\nMultiline: :paste, source lines, :end; :cancel discards.\r\nprint displays an integer; print$ displays a string. JS/SOM show the newest raw word.\r\nIn T0, reset clears the environment and returns to t0>.\r\n"
 full_input_message:
     .asciz "input exceeds 65535 UTF8 bytes"
 full_uncaught_message:

@@ -11,7 +11,7 @@ scope.eval$(`
 // A Parser Stream - used as input for parsers
 { str pos value ignore let false :tail |
   { m |
-    m switch
+    m switch$
       'parse  { parser this | this parser () }
       'parseToken { parser this |
         ignore
@@ -30,9 +30,7 @@ scope.eval$(`
       'ignoreOff { this | str pos value false PStream }
       'ignoreOn { ignore this | str pos value ignore PStream .maybeIgnore }
       'pos    { this | pos }
-      'head   { this |
-        // [ " pos: " pos " , head-> " str pos sourceCharAt ] join print
-        str pos sourceCharAt }
+      'head   { this | str pos sourceCharAt }
       'tail   { this |
         tail !
           { | str str pos sourceNext this .head ignore PStream ignore { | .maybeIgnore } if :tail }
@@ -47,8 +45,8 @@ scope.eval$(`
       }
       'value  { this | value }
       ':value { v2 this | value v2 = { | this } { | str pos v2 ignore PStream } ifelse }
-      'toString { this | " PStream: " pos " , '" value '' + + + + }
-      { this | " PStream Unknown Method '" m + '' + print }
+      'toString { this | " PStream: " pos >$ +$ }
+      { this | " PStream Unknown Method '" m +$ '' +$ print$ }
     end
   }
 } ::PStream
@@ -57,27 +55,25 @@ scope.eval$(`
 { p | { ps | p ps .parseToken } } ::tok
 
 { str v | { ps let 0 :i |
-  { | i str sourceLen <  { | ps .head str i sourceCharAt = } && } { | str i sourceNext :i ps .tail :ps } while
+  { | i str sourceLen < { | ps .head { | ps .head str i sourceCharAt =$ } && } && } { | str i sourceNext :i ps .tail :ps } while
   str sourceLen i = { | v ps .:value } { | false } ifelse
 } tok } ::litMap
 
 { str | str str litMap } ::lit
 
-{ start end c | c string? { | c start >=  c end <= & } && } ::inRange
+{ start end c | c { | c start $>= c end $<= & } && } ::inRange
 { start end | { ps |
   start end ps .head inRange { | ps .tail } { | false } ifelse
 } } ::range
 
-{ parsers | parsers { p | p string? { | p lit } { | p } ifelse } map } ::prepare
-
-{ parsers | parsers prepare :parsers { ps let 0 :i |
+{ parsers | { ps let 0 :i |
   [ { | i parsers len < { | parsers i @ ps .parse :ps ps } && } { | i++ ps .value } while ]
   parsers len i = { a | a ps .:value } { _ | false } ifelse
 } } ::seq
 
 { parsers i | parsers seq { a | a i @ } mapp } ::seq1
 
-{ parsers | parsers prepare :parsers { ps let 0 :i false :ret |
+{ parsers | { ps let 0 :i false :ret |
   { | i parsers len < { | parsers i @ ps .parse :ret ret ! } && } { | i++ } while
   ret
 } } ::alt
@@ -100,9 +96,9 @@ scope.eval$(`
 
 { parser | { ps | parser ps .parse { | false } { | ps } ifelse } } ::notp
 
-{ str | { ps | ps .head string? { | str ps .head indexOf -1 = } && { | ps .tail } { | false } ifelse } } ::notChars
+{ str | { ps | ps .head { | str ps .head $indexOf -1 = } && { | ps .tail } { | false } ifelse } } ::notChars
 
-{ str | { ps | ps .head string? { | str ps .head indexOf -1 > } && { | ps .tail } { | false } ifelse } } ::anyChar
+{ str | { ps | ps .head { | str ps .head $indexOf -1 > } && { | ps .tail } { | false } ifelse } } ::anyChar
 
 { p f | { ps | p ps .parse :ps ps { | ps .value f () ps .:value } { | false } ifelse } } ::mapp
 

@@ -13,16 +13,19 @@ const primitives = {
   '+': 'add', '-': 'sub', '*': 'mul', '/': 'div', mod: 'mod', '^': 'pow', '%': 'percent',
   '=': 'equal', '!=': 'not_equal', '<': 'less', '<=': 'less_equal', '>': 'greater', '>=': 'greater_equal',
   '!': 'not', '&': 'and', '|': 'or', '&&': 'lazy_and', '||': 'lazy_or', if: 'if', ifelse: 'ifelse', while: 'while',
-  '()': 'call', eval: 'eval', print: 'print', debugger: 'debugger', const: 'const', ';': 'semicolon', parseFloat: 'parse_float',
+  '()': 'call', eval: 'eval', print: 'print', debugger: 'debugger', const: 'const', ';': 'semicolon', parseInt: 'parse_int',
   pick: 'pick', '[': 'array_start', ']': 'array_end', '@': 'get', ':@': 'set', len: 'len', byteLen: 'byte_len',
   sourceLen: 'byte_len', sourceCharAt: 'source_char_at', sourceNext: 'source_next',
-  '[]WithValue': 'array_value', '[]WithFn': 'array_fn', 'string?': 'string_query', 'array?': 'array_query',
+  '[]WithValue': 'array_value', '[]WithFn': 'array_fn',
+  '+$': 'concat', '=$': 'string_equal', '$<': 'string_less', '$<=': 'string_less_equal',
+  '$>': 'string_greater', '$>=': 'string_greater_equal', strlen: 'string_len',
+  'print$': 'string_print', '>$': 'to_string', '$indexOf': 'string_index_of',
   charAt: 'char_at', charCode: 'char_code', indexOf: 'index_of', depth: 'depth', clear: 'clear', reset: 'reset', include: 'include',
 };
 
 function string(label, value) {
   const bytes = Buffer.from(value, 'utf8');
-  return `.align 3\n${label}:\n .quad 1, ${bytes.length}\n .byte ${[...bytes, 0].join(',')}\n`;
+  return `.align 3\n${label}:\n .quad ${bytes.length}\n .byte ${[...bytes, 0].join(',')}\n`;
 }
 
 function moduleSource(file) {
@@ -47,8 +50,7 @@ export function build() {
   Object.entries(primitives).forEach(([name, op], i) => { data += ` .quad primitive_name_${i}, prim_${op}\n`; });
   data += ' .quad 0, 0\n';
   Object.keys(primitives).forEach((name, i) => { data += string(`primitive_name_${i}`, name); });
-  for (const [label, value] of Object.entries({str_empty: '', str_false: 'false', str_true: 'true',
-    str_undefined: 'undefined', str_null: 'null', str_length: 'length', str_array_marker: '__arrayStart__',
+  for (const [label, value] of Object.entries({str_empty: '', str_array_marker: '__arrayStart__',
     js_eval_command: 'jsEval', som_eval_command: 'somEval', boot_prelude: prelude})) data += string(label, value);
   for (const [name, source] of Object.entries(modules)) data += string(`module_${name}`, source);
   data += '.align 3\nembedded_modules:\n';

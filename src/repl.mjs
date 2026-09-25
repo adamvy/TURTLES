@@ -7,7 +7,7 @@ const examples = {
   js: [
     ['Arithmetic', '1 + 2 * 3'],
     ['Functions', 'function square(x) { return x * x; }\nsquare(9)'],
-    ['Closures', 'function counter(start) {\n  let n = start;\n  return function() { n = n + 1; return n; };\n}\nlet next = counter(40);\n[next(), next()]'],
+    ['Closures', 'function counter(start) {\n  let n = start;\n  return function() { n = n + 1; return n; };\n}\nlet next = counter(40);\nnext() + next()'],
     ['Recursion', 'function factorial(n) {\n  if (n <= 1) { return 1; }\n  return n * factorial(n - 1);\n}\nfactorial(6)'],
     ['Arrays', 'let values = [2, 3, 5];\nvalues[0] * values[1] + values[2]'],
   ],
@@ -63,9 +63,9 @@ function selectMode(mode) {
     return button;
   }));
   $('#language-note').textContent = mode === 'js'
-    ? 'The JS-like compiler runs in T0: functions, lexical closures, recursion, expressions, arrays and control flow. This is an experimental dialect, not full ECMAScript. Locals are function-scoped; no const, objects or classes.'
+    ? 'The JS-like compiler runs in T0: functions, lexical closures, recursion, expressions, arrays and control flow. This is an experimental dialect, not full ECMAScript. ARM uses integer arithmetic. Locals are function-scoped; no const, objects or classes.'
     : mode === 'som' ? 'SOM compiles to T0: messages, blocks, variables and classes. This is an experimental subset without native primitives, the full SOM library or nonlocal returns from blocks. Switching languages keeps the session.'
-    : 'T0 is Kevin Greer’s stack language. Definitions and compiler extensions stay in the session until reboot. Use print to display a value; Reboot starts a fresh environment.';
+    : 'T0 is Kevin Greer’s stack language. Definitions and compiler extensions stay in the session until reboot. On ARM, print displays an integer and print$ displays a string. Arithmetic uses raw 64-bit integers. Reboot starts a fresh environment.';
 }
 function stop() {
   // Removing the complete browsing context also terminates its Wasm workers.
