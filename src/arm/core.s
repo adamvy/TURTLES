@@ -173,7 +173,7 @@ core_scope_index_found:
     str x2, [x1]
     ret
 
-// x0 str,x1 start,x2 end -> copied JS-style substring (UTF16 units).
+// x0 str,x1 start,x2 end -> copied substring using compiler byte offsets.
 core_slice:
     ldr x3, [x0, #8]
     cmp x1, #0
@@ -188,7 +188,7 @@ core_slice:
     csel x4, x1, x2, ls
     csel x5, x2, x1, ls
     add x0, x0, #16
-    add x0, x0, x4, lsl #1
+    add x0, x0, x4
     sub x1, x5, x4
     b string_new
 
@@ -236,6 +236,7 @@ core_space_yes:
     ret
 
 core_read_char:
+    stp x19, x30, [sp, #-16]!
     adr x1, compiler_input
     ldr x1, [x1]
     cmp x1, #18
@@ -245,17 +246,21 @@ core_read_char:
     ldr x4, [x1, #8]
     cmp x3, x4
     b.hs core_read_char_end
-    add x1, x1, #16
-    add x1, x1, x3, lsl #1
-    ldrh w0, [x1]
-    add x3, x3, #1
+    add x19, x1, #16
+    add x0, x19, x3
+    add x1, x19, x4
+    bl utf8_decode
+    sub x3, x1, x19
+    adr x2, compiler_index
     str x3, [x2]
     adr x4, compiler_scope
     ldr x4, [x4]
     str x3, [x4, #24]
+    ldp x19, x30, [sp], #16
     ret
 core_read_char_end:
     mov x0, #-1
+    ldp x19, x30, [sp], #16
     ret
 
 core_read_symbol:
@@ -273,24 +278,28 @@ core_read_symbol:
 core_read_symbol_next:
     cmp x20, x21
     b.hs core_read_symbol_eof
+    mov x26, x20
     add x0, x19, #16
-    add x0, x0, x20, lsl #1
-    ldrh w0, [x0]
-    add x20, x20, #1
+    add x1, x0, x21
+    add x0, x0, x20
+    bl utf8_decode
+    sub x20, x1, x19
+    sub x20, x20, #16
     bl core_is_space
     cbz x0, core_read_symbol_character
     cmp x25, #0
     b.lt core_read_symbol_next
-    sub x26, x20, #1
     b core_read_symbol_finish
 core_read_symbol_character:
     cmp x25, #0
     b.ge core_read_symbol_next
-    sub x25, x20, #1
+    mov x25, x26
     b core_read_symbol_next
 core_read_symbol_eof:
     mov x26, x20
 core_read_symbol_finish:
+    adr x0, compiler_token_start
+    str x25, [x0]
     adr x0, compiler_index
     str x20, [x0]
     adr x1, compiler_scope
@@ -570,6 +579,7 @@ core_op_input:
     b value_push
 core_op_ip:
     stp x29, x30, [sp, #-16]!
+    // Source cursors use byte offsets, like sourceCharAt and PStream.pos.
     adr x0, compiler_index
     ldr x0, [x0]
     bl number_from_int
@@ -747,14 +757,14 @@ compile_symbol:
 core_symbol_fallback:
     ldr x20, [x19, #8]
     cbz x20, core_error_unknown
-    ldrh w21, [x19, #16]
+    ldrb w21, [x19, #16]
     cmp x21, #46
     b.eq core_symbol_method
     cmp x21, #58
     b.eq core_symbol_definition
-    add x0, x19, #14
-    add x0, x0, x20, lsl #1
-    ldrh w0, [x0]
+    add x0, x19, #15
+    add x0, x0, x20
+    ldrb w0, [x0]
     cmp x0, #58
     b.eq core_symbol_name
     cmp x21, #48
@@ -793,7 +803,7 @@ core_symbol_definition:
     mov x1, #1
     cmp x20, #2
     b.lo core_symbol_definition_slice
-    ldrh w0, [x19, #18]
+    ldrb w0, [x19, #17]
     cmp x0, #58
     b.ne core_symbol_definition_slice
     mov x25, #1
@@ -880,7 +890,7 @@ core_compile_block:
     stp x21, x25, [sp, #16]
     stp x26, x27, [sp, #32]
     stp x28, x30, [sp, #48]
-    adr x0, compiler_index
+    adr x0, compiler_token_start
     ldr x0, [x0]
     str x0, [sp, #64]
     adr x0, core_str_empty
@@ -917,7 +927,7 @@ core_block_parameter_next:
     str x0, [sp, #80]
     cmp x1, #1
     b.ne core_block_check_let
-    ldrh w1, [x0, #16]
+    ldrb w1, [x0, #16]
     cmp x1, #124
     b.eq core_block_parameters_done
 core_block_check_let:
@@ -926,7 +936,7 @@ core_block_check_let:
     cbnz x0, core_block_parameters_done
     ldr x0, [sp, #80]
     cbnz x27, core_block_parameter_add
-    ldrh w1, [x0, #16]
+    ldrb w1, [x0, #16]
     cmp x1, #58
     b.ne core_block_parameter_add
     ldr x2, [x0, #8]
@@ -979,11 +989,11 @@ core_block_local_next:
     str x0, [sp, #80]
     cmp x1, #1
     b.ne core_block_local_check
-    ldrh w1, [x0, #16]
+    ldrb w1, [x0, #16]
     cmp x1, #124
     b.eq core_block_body_next
 core_block_local_check:
-    ldrh w1, [x0, #16]
+    ldrb w1, [x0, #16]
     cmp x1, #58
     b.eq core_block_local_define
     bl compile_symbol
@@ -1007,7 +1017,7 @@ core_block_body_next:
     cbz x1, core_error_unterminated_block
     cmp x1, #1
     b.ne core_block_body_compile
-    ldrh w1, [x0, #16]
+    ldrb w1, [x0, #16]
     cmp x1, #125
     b.eq core_block_complete
 core_block_body_compile:
@@ -1020,10 +1030,9 @@ core_block_complete:
     adr x0, compiler_input
     ldr x0, [x0]
     ldr x1, [sp, #64]
-    sub x1, x1, #2
-    adr x2, compiler_index
+    adr x2, compiler_token_start
     ldr x2, [x2]
-    sub x2, x2, #1
+    add x2, x2, #1
     bl core_slice
     str x0, [sp, #88]
     mov x0, #48
@@ -1137,7 +1146,7 @@ core_js_done:
     ldp x19, x20, [sp], #64
     ret
 
-// Read literal UTF16 text up to a repeated delimiter; unlike the upstream
+// Read literal UTF8 bytes up to a repeated ASCII delimiter; unlike the upstream
 // JavaScript's infinite EOF loops, malformed unterminated input is diagnosed.
 core_read_until:
     stp x19, x20, [sp, #-80]!
@@ -1162,8 +1171,8 @@ core_until_match:
     b.hs core_until_found
     add x0, x21, x28
     add x1, x19, #16
-    add x1, x1, x0, lsl #1
-    ldrh w0, [x1]
+    add x1, x1, x0
+    ldrb w0, [x1]
     cmp x0, x26
     b.ne core_until_advance
     add x28, x28, #1
@@ -1423,6 +1432,7 @@ global_scope: .quad 0
 current_frame: .quad 0
 compiler_input: .quad 0
 compiler_index: .quad 0
+compiler_token_start: .quad 0
 compiler_builder: .quad 0
 outer_builder: .quad -1
 throw_pending: .quad 0
@@ -1464,101 +1474,101 @@ core_message_js_invalid: .asciz "invalid JS-like source in js{ block"
 .balign 8
 core_str_empty:
     .quad 1, 0
-    .byte 0, 0
+    .byte 0
 .balign 8
 core_str_ampersand:
     .quad 1, 1
-    .byte 38, 0, 0, 0
+    .byte 38, 0
 .balign 8
 core_str_call:
     .quad 1, 2
-    .byte 40, 0, 41, 0, 0, 0
+    .byte 40, 41, 0
 .balign 8
 core_str_colon:
     .quad 1, 1
-    .byte 58, 0, 0, 0
+    .byte 58, 0
 .balign 8
 core_str_increment:
     .quad 1, 2
-    .byte 43, 0, 43, 0, 0, 0
+    .byte 43, 43, 0
 .balign 8
 core_str_decrement:
     .quad 1, 2
-    .byte 45, 0, 45, 0, 0, 0
+    .byte 45, 45, 0
 .balign 8
 core_str_return_suffix:
     .quad 1, 2
-    .byte 60, 0, 45, 0, 0, 0
+    .byte 60, 45, 0
 .balign 8
 core_str_let:
     .quad 1, 3
-    .byte 108, 0, 101, 0, 116, 0, 0, 0
+    .byte 108, 101, 116, 0
 .balign 8
 core_str_comment_end:
     .quad 1, 2
-    .byte 42, 0, 47, 0, 0, 0
+    .byte 42, 47, 0
 .balign 8
 core_str_end:
     .quad 1, 3
-    .byte 101, 0, 110, 0, 100, 0, 0, 0
+    .byte 101, 110, 100, 0
 .balign 8
 core_str_open_block:
     .quad 1, 1
-    .byte 123, 0, 0, 0
+    .byte 123, 0
 .balign 8
 core_str_switch:
     .quad 1, 6
-    .byte 115, 0, 119, 0, 105, 0, 116, 0, 99, 0, 104, 0, 0, 0
+    .byte 115, 119, 105, 116, 99, 104, 0
 .balign 8
 core_str_immediate:
     .quad 1, 2
-    .byte 105, 0, 91, 0, 0, 0
+    .byte 105, 91, 0
 .balign 8
 core_str_emit:
     .quad 1, 4
-    .byte 101, 0, 109, 0, 105, 0, 116, 0, 0, 0
+    .byte 101, 109, 105, 116, 0
 .balign 8
 core_str_quote:
     .quad 1, 1
-    .byte 34, 0, 0, 0
+    .byte 34, 0
 .balign 8
 core_str_triple:
     .quad 1, 3
-    .byte 34, 0, 34, 0, 34, 0, 0, 0
+    .byte 34, 34, 34, 0
 .balign 8
 core_str_line_comment:
     .quad 1, 2
-    .byte 47, 0, 47, 0, 0, 0
+    .byte 47, 47, 0
 .balign 8
 core_str_block_comment:
     .quad 1, 2
-    .byte 47, 0, 42, 0, 0, 0
+    .byte 47, 42, 0
 .balign 8
 core_str_scope_lookup:
     .quad 1, 2
-    .byte 63, 0, 63, 0, 0, 0
+    .byte 63, 63, 0
 .balign 8
 core_str_input:
     .quad 1, 6
-    .byte 105, 0, 110, 0, 112, 0, 117, 0, 116, 0, 95, 0, 0, 0
+    .byte 105, 110, 112, 117, 116, 95, 0
 .balign 8
 core_str_ip:
     .quad 1, 3
-    .byte 105, 0, 112, 0, 95, 0, 0, 0
+    .byte 105, 112, 95, 0
 .balign 8
 core_str_return:
     .quad 1, 2
-    .byte 60, 0, 45, 0, 0, 0
+    .byte 60, 45, 0
 .balign 8
 core_str_js_open:
     .quad 1, 3
-    .byte 106, 0, 115, 0, 123, 0, 0, 0
+    .byte 106, 115, 123, 0
 .balign 8
 core_str_js_close:
     .quad 1, 3
-    .byte 125, 0, 106, 0, 115, 0, 0, 0
+    .byte 125, 106, 115, 0
 .balign 8
 core_str_js_compile:
     .quad 1, 9
-    .byte 106, 0, 115, 0, 67, 0, 111, 0, 109, 0, 112, 0, 105, 0, 108, 0, 101, 0, 0, 0
+    .byte 106, 115, 67, 111, 109, 112, 105, 108, 101, 0
 .balign 8

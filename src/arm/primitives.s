@@ -621,13 +621,9 @@ prim_char_at:
     fcvtzs x1, d0
     cmp x1, #0
     b.lt full_char_at_empty
-    ldr x2, [x19, #8]
-    cmp x1, x2
-    b.hs full_char_at_empty
-    add x0, x19, #16
-    add x0, x0, x1, lsl #1
-    mov x1, #1
-    bl string_new
+    mov x0, x19
+    bl string_point_at
+    cbz x0, full_char_at_empty
     b full_char_at_push
 full_char_at_null:
     mov x0, #14
@@ -640,57 +636,98 @@ full_char_at_push:
     ldp x21, x25, [sp, #16]
     ldp x19, x20, [sp], #48
     ret
-// ToUint16 follows binary64 exponent/mantissa, including huge finite numbers.
-number_uint16:
-    fmov x0, d0
-    lsr x1, x0, #52
-    and x1, x1, #2047
-    cmp x1, #2047
-    b.eq full_uint16_zero
-    sub x1, x1, #1023
-    cmp x1, #0
-    b.lt full_uint16_zero
-    and x2, x0, #0xfffffffffffff
-    mov x3, #0x10000000000000
-    orr x2, x2, x3
-    cmp x1, #52
-    b.ge full_uint16_left
-    mov x3, #52
-    sub x3, x3, x1
-    lsr x2, x2, x3
-    b full_uint16_sign
-full_uint16_left:
-    sub x1, x1, #52
-    cmp x1, #16
-    b.hs full_uint16_zero
-    lsl x2, x2, x1
-full_uint16_sign:
-    tbz x0, #63, full_uint16_positive
-    neg x2, x2
-full_uint16_positive:
-    and x0, x2, #65535
-    ret
-full_uint16_zero:
-    mov x0, #0
-    ret
+// ARM charCode constructs one Unicode scalar; invalid numeric input -> U+FFFD.
 prim_char_code:
     stp x29, x30, [sp, #-16]!
     bl value_pop
     bl value_to_number
-    bl number_uint16
-    stp x0, xzr, [sp, #-16]!
-    mov x0, sp
-    mov x1, #1
-    bl string_new
-    add sp, sp, #16
+    fcvtzs x0, d0
+    scvtf d1, x0
+    fcmp d0, d1
+    b.eq full_char_code_scalar
+    mov x0, #-1
+full_char_code_scalar:
+    bl string_from_codepoint
     bl value_push
     ldp x29, x30, [sp], #16
     ret
+// Explicit storage length; ordinary len continues to count code points.
+prim_byte_len:
+    stp x29, x30, [sp, #-16]!
+    bl value_pop
+    bl full_require_string
+    ldr x0, [x0, #8]
+    bl number_from_int
+    bl value_push
+    ldp x29, x30, [sp], #16
+    ret
+
+// Parser cursors use byte offsets. Pop (string, offset), validate the string,
+// and return x0 string, x1 integral byte offset (-1 if invalid), x2 byte length.
+full_source_position:
+    stp x19, x20, [sp, #-32]!
+    stp x29, x30, [sp, #16]
+    bl prim_binary
+    mov x19, x0
+    mov x20, x1
+    bl full_require_string
+    mov x0, x20
+    bl value_to_number
+    fcvtzs x1, d0
+    scvtf d1, x1
+    fcmp d0, d1
+    mov x2, #-1
+    csel x1, x1, x2, eq
+    mov x0, x19
+    ldr x2, [x0, #8]
+    ldp x29, x30, [sp, #16]
+    ldp x19, x20, [sp], #32
+    ret
+// (string byteOffset -- character|null). Interior/invalid bytes decode U+FFFD.
+prim_source_char_at:
+    stp x29, x30, [sp, #-16]!
+    bl full_source_position
+    cmp x1, x2
+    b.hs full_source_char_missing
+    add x3, x0, #16
+    add x0, x3, x1
+    add x1, x3, x2
+    bl utf8_decode
+    bl string_from_codepoint
+    b full_source_char_push
+full_source_char_missing:
+    mov x0, #14
+full_source_char_push:
+    bl value_push
+    ldp x29, x30, [sp], #16
+    ret
+// (string byteOffset -- nextByteOffset). EOF/out-of-range clamps to byte length.
+// Invalid UTF8 advances one original byte, regardless of replacement encoding.
+prim_source_next:
+    stp x19, x30, [sp, #-16]!
+    bl full_source_position
+    add x19, x0, #16
+    cmp x1, x2
+    b.hs full_source_next_end
+    add x0, x19, x1
+    add x1, x19, x2
+    bl utf8_decode
+    sub x0, x1, x19
+    b full_source_next_push
+full_source_next_end:
+    mov x0, x2
+full_source_next_push:
+    bl number_from_int
+    bl value_push
+    ldp x19, x30, [sp], #16
+    ret
+
 prim_index_of:
-    stp x19, x20, [sp, #-64]!
+    stp x19, x20, [sp, #-80]!
     stp x21, x25, [sp, #16]
     stp x26, x27, [sp, #32]
-    stp x29, x30, [sp, #48]
+    stp x28, xzr, [sp, #48]
+    stp x29, x30, [sp, #64]
     bl prim_binary
     mov x19, x0
     mov x20, x1
@@ -703,28 +740,42 @@ prim_index_of:
     b.ne full_type_error
     mov x0, x20
     bl value_to_string
-    mov x20, x0
-    ldr x21, [x19, #8]
-    ldr x25, [x20, #8]
+    ldr x25, [x0, #8]
+    add x21, x0, #16
+    add x25, x21, x25
+    ldr x20, [x19, #8]
     add x19, x19, #16
-    add x20, x20, #16
+    add x20, x19, x20
+    mov x27, x19
     mov x26, #0
+// Search decoded scalar sequences, returning a code-point position.
 full_index_of_outer:
-    add x1, x26, x25
-    cmp x1, x21
-    b.hi full_index_of_missing
-    mov x27, #0
+    mov x9, x21
+    mov x28, x27
 full_index_of_inner:
-    cmp x27, x25
+    cmp x9, x25
     b.hs full_index_of_found
-    add x1, x26, x27
-    ldrh w2, [x19, x1, lsl #1]
-    ldrh w3, [x20, x27, lsl #1]
-    cmp w2, w3
+    cmp x28, x20
+    b.hs full_index_of_next
+    mov x0, x28
+    mov x1, x20
+    bl utf8_decode
+    mov x10, x0
+    mov x28, x1
+    mov x0, x9
+    mov x1, x25
+    bl utf8_decode
+    mov x9, x1
+    cmp x0, x10
     b.ne full_index_of_next
-    add x27, x27, #1
     b full_index_of_inner
 full_index_of_next:
+    cmp x27, x20
+    b.hs full_index_of_missing
+    mov x0, x27
+    mov x1, x20
+    bl utf8_decode
+    mov x27, x1
     add x26, x26, #1
     b full_index_of_outer
 full_array_index_of:
@@ -748,10 +799,11 @@ full_index_of_found:
     mov x0, x26
     bl number_from_int
     bl value_push
-    ldp x29, x30, [sp, #48]
+    ldp x29, x30, [sp, #64]
+    ldp x28, xzr, [sp, #48]
     ldp x26, x27, [sp, #32]
     ldp x21, x25, [sp, #16]
-    ldp x19, x20, [sp], #64
+    ldp x19, x20, [sp], #80
     ret
 full_require_string:
     cmp x0, #18

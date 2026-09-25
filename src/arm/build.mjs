@@ -14,13 +14,15 @@ const primitives = {
   '=': 'equal', '!=': 'not_equal', '<': 'less', '<=': 'less_equal', '>': 'greater', '>=': 'greater_equal',
   '!': 'not', '&': 'and', '|': 'or', '&&': 'lazy_and', '||': 'lazy_or', if: 'if', ifelse: 'ifelse', while: 'while',
   '()': 'call', eval: 'eval', print: 'print', debugger: 'debugger', const: 'const', ';': 'semicolon', parseFloat: 'parse_float',
-  pick: 'pick', '[': 'array_start', ']': 'array_end', '@': 'get', ':@': 'set', len: 'len',
+  pick: 'pick', '[': 'array_start', ']': 'array_end', '@': 'get', ':@': 'set', len: 'len', byteLen: 'byte_len',
+  sourceLen: 'byte_len', sourceCharAt: 'source_char_at', sourceNext: 'source_next',
   '[]WithValue': 'array_value', '[]WithFn': 'array_fn', 'string?': 'string_query', 'array?': 'array_query',
   charAt: 'char_at', charCode: 'char_code', indexOf: 'index_of', depth: 'depth', clear: 'clear', reset: 'reset', include: 'include',
 };
 
 function string(label, value) {
-  return `.align 3\n${label}:\n .quad 1, ${value.length}\n .byte ${[...Buffer.from(value, 'utf16le'), 0, 0].join(',')}\n`;
+  const bytes = Buffer.from(value, 'utf8');
+  return `.align 3\n${label}:\n .quad 1, ${bytes.length}\n .byte ${[...bytes, 0].join(',')}\n`;
 }
 
 function moduleSource(file) {

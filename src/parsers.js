@@ -1,3 +1,11 @@
+// Parser cursors use native string offsets: UTF16 units on the JS host,
+// UTF8 bytes on ARM. The ARM core supplies these cursor operations directly.
+if (scope.charAt) {
+  scope.sourceLen = scope.len;
+  scope.sourceCharAt = scope.charAt;
+  scope.sourceNext = bfn((str, pos) => pos + 1);
+}
+
 scope.eval$(`
 
 // A Parser Stream - used as input for parsers
@@ -23,11 +31,11 @@ scope.eval$(`
       'ignoreOn { ignore this | str pos value ignore PStream .maybeIgnore }
       'pos    { this | pos }
       'head   { this |
-        // [ " pos: " pos " , head-> " str pos charAt ] join print
-        str pos charAt }
+        // [ " pos: " pos " , head-> " str pos sourceCharAt ] join print
+        str pos sourceCharAt }
       'tail   { this |
         tail !
-          { | str pos 1 + this .head ignore PStream ignore { | .maybeIgnore } if :tail }
+          { | str str pos sourceNext this .head ignore PStream ignore { | .maybeIgnore } if :tail }
         if
         tail
       }
@@ -49,8 +57,8 @@ scope.eval$(`
 { p | { ps | p ps .parseToken } } ::tok
 
 { str v | { ps let 0 :i |
-  { | i str len <  { | ps .head str i charAt = } && } { | ps .tail :ps  i++ } while
-  str len i = { | v ps .:value } { | false } ifelse
+  { | i str sourceLen <  { | ps .head str i sourceCharAt = } && } { | str i sourceNext :i ps .tail :ps } while
+  str sourceLen i = { | v ps .:value } { | false } ifelse
 } tok } ::litMap
 
 { str | str str litMap } ::lit

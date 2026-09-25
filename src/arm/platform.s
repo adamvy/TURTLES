@@ -167,6 +167,7 @@ read_source:
     stp x29, x30, [sp, #64]
     mov x28, #0
     adr x19, full_input_buffer
+    ldr x19, [x19]
     mov x0, x19
     mov x1, #65536
     bl read_line

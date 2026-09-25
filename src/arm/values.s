@@ -1,4 +1,4 @@
-// UTF16 strings, binary64 values, arrays and JavaScript coercions.
+// UTF8 strings, binary64 values, arrays and JavaScript-style coercions.
 number_box:
     stp x29, x30, [sp, #-16]!
     fmov x4, d0
@@ -14,7 +14,10 @@ number_box:
 number_from_int:
     scvtf d0, x0
     b number_box
-// x0 points at valid UTF16, x1 count. Overflow checks precede allocation.
+// Strings: u64 kind=1, u64 byte length at +8, UTF8 bytes at +16, trailing zero.
+// Arbitrary bytes are preserved. Length, indexing and charAt decode code points.
+// x0 bytes,x1 byte count -> copied string. Embedded zero bytes are valid.
+string_from_utf8:
 string_new:
     stp x19, x20, [sp, #-32]!
     stp x29, x30, [sp, #16]
@@ -23,8 +26,7 @@ string_new:
     mov x2, #0x10000000
     cmp x1, x2
     b.hs fatal_heap
-    lsl x0, x1, #1
-    add x0, x0, #18
+    add x0, x1, #17
     bl heap_alloc
     mov x1, #1
     str x1, [x0]
@@ -32,14 +34,14 @@ string_new:
     add x1, x0, #16
 full_str_copy:
     cbz x20, full_str_end
-    ldrh w2, [x19]
-    strh w2, [x1]
-    add x19, x19, #2
-    add x1, x1, #2
+    ldrb w2, [x19]
+    strb w2, [x1]
+    add x19, x19, #1
+    add x1, x1, #1
     sub x20, x20, #1
     b full_str_copy
 full_str_end:
-    strh wzr, [x1]
+    strb wzr, [x1]
     ldp x29, x30, [sp, #16]
     ldp x19, x20, [sp], #32
     ret
@@ -54,12 +56,12 @@ string_equal:
     add x1, x1, #16
 full_str_equal_loop:
     cbz x2, full_str_equal_yes
-    ldrh w3, [x0]
-    ldrh w4, [x1]
+    ldrb w3, [x0]
+    ldrb w4, [x1]
     cmp w3, w4
     b.ne full_str_equal_no
-    add x0, x0, #2
-    add x1, x1, #2
+    add x0, x0, #1
+    add x1, x1, #1
     sub x2, x2, #1
     b full_str_equal_loop
 full_str_equal_yes:
@@ -68,6 +70,7 @@ full_str_equal_yes:
 full_str_equal_no:
     mov x0, #0
     ret
+// UTF8 byte ordering agrees with scalar ordering for valid encodings.
 string_compare:
     ldr x2, [x0, #8]
     ldr x3, [x1, #8]
@@ -76,13 +79,13 @@ string_compare:
 full_str_compare_loop:
     cbz x2, full_str_compare_a_end
     cbz x3, full_str_compare_greater
-    ldrh w4, [x0]
-    ldrh w5, [x1]
+    ldrb w4, [x0]
+    ldrb w5, [x1]
     cmp w4, w5
     b.lo full_str_compare_less
     b.hi full_str_compare_greater
-    add x0, x0, #2
-    add x1, x1, #2
+    add x0, x0, #1
+    add x1, x1, #1
     sub x2, x2, #1
     sub x3, x3, #1
     b full_str_compare_loop
@@ -104,8 +107,7 @@ string_concat:
     ldr x0, [x19, #8]
     ldr x1, [x20, #8]
     add x0, x0, x1
-    lsl x0, x0, #1
-    add x0, x0, #18
+    add x0, x0, #17
     bl heap_alloc
     mov x1, #1
     str x1, [x0]
@@ -118,169 +120,233 @@ string_concat:
     add x20, x20, #16
 full_concat_first:
     cbz x2, full_concat_second
-    ldrh w4, [x19]
-    strh w4, [x1]
-    add x19, x19, #2
-    add x1, x1, #2
+    ldrb w4, [x19]
+    strb w4, [x1]
+    add x19, x19, #1
+    add x1, x1, #1
     sub x2, x2, #1
     b full_concat_first
 full_concat_second:
     cbz x3, full_concat_end
-    ldrh w4, [x20]
-    strh w4, [x1]
-    add x20, x20, #2
-    add x1, x1, #2
+    ldrb w4, [x20]
+    strb w4, [x1]
+    add x20, x20, #1
+    add x1, x1, #1
     sub x3, x3, #1
     b full_concat_second
 full_concat_end:
-    strh wzr, [x1]
+    strb wzr, [x1]
     ldp x29, x30, [sp, #16]
     ldp x19, x20, [sp], #32
     ret
 
-// Decode valid UTF8, replacing malformed sequences with U+FFFD. Each incoming
-// byte can produce at most one UTF16 code unit, so reserve a checked upper bound.
-string_from_utf8:
-    stp x19, x20, [sp, #-64]!
-    stp x21, x25, [sp, #16]
-    stp x26, x27, [sp, #32]
-    stp x29, x30, [sp, #48]
-    mov x19, x0
-    add x20, x0, x1
-    lsl x0, x1, #1
-    add x0, x0, #18
-    bl heap_alloc
-    mov x21, x0
-    mov x1, #1
-    str x1, [x21]
-    add x25, x21, #16
-    mov x26, #0
-full_utf8_next:
-    cmp x19, x20
-    b.hs full_utf8_done
-    ldrb w0, [x19]
-    add x19, x19, #1
-    cmp x0, #128
-    b.lo full_utf8_emit
-    mov x27, #0
-    cmp x0, #0xc2
-    b.lo full_utf8_invalid
-    cmp x0, #0xe0
-    b.lo full_utf8_two
-    cmp x0, #0xf0
-    b.lo full_utf8_three
-    cmp x0, #0xf5
-    b.hs full_utf8_invalid
-    and x0, x0, #7
-    mov x2, #3
-    mov x3, #0x10000
-    b full_utf8_continue
-full_utf8_three:
-    and x0, x0, #15
-    mov x2, #2
-    mov x3, #0x800
-    b full_utf8_continue
-full_utf8_two:
-    and x0, x0, #31
-    mov x2, #1
-    mov x3, #128
-full_utf8_continue:
-    cmp x19, x20
-    b.hs full_utf8_invalid
-    ldrb w1, [x19]
-    and x4, x1, #0xc0
-    cmp x4, #0x80
-    b.ne full_utf8_invalid
-    add x19, x19, #1
-    lsl x0, x0, #6
-    and x1, x1, #63
-    orr x0, x0, x1
-    sub x2, x2, #1
-    cbnz x2, full_utf8_continue
-    cmp x0, x3
-    b.lo full_utf8_invalid
-    mov x1, #0x110000
-    cmp x0, x1
-    b.hs full_utf8_invalid
-    mov x1, #0xd800
-    cmp x0, x1
-    b.lo full_utf8_check_pair
-    mov x1, #0xe000
-    cmp x0, x1
-    b.lo full_utf8_invalid
-full_utf8_check_pair:
-    mov x1, #0x10000
-    cmp x0, x1
-    b.lo full_utf8_emit
-    sub x0, x0, x1
-    lsr x1, x0, #10
-    mov x2, #0xd800
-    add x1, x1, x2
-    strh w1, [x25]
-    add x25, x25, #2
-    add x26, x26, #1
-    and x0, x0, #1023
-    mov x1, #0xdc00
-    add x0, x0, x1
-    b full_utf8_emit
-full_utf8_invalid:
+// x0 pointer < x1 end -> x0 scalar, x1 next pointer. Clobbers x2..x8.
+// Malformed UTF8 consumes exactly one byte and yields U+FFFD, like Go's rune decoder.
+utf8_decode:
+    add x2, x0, #1
+    ldrb w3, [x0]
+    cmp x3, #128
+    b.lo full_decode_ascii
+    cmp x3, #0xc2
+    b.lo full_decode_invalid
+    cmp x3, #0xe0
+    b.lo full_decode_two
+    cmp x3, #0xf0
+    b.lo full_decode_three
+    cmp x3, #0xf5
+    b.hs full_decode_invalid
+    and x4, x3, #7
+    mov x6, #3
+    mov x7, #0x10000
+    b full_decode_continue
+full_decode_three:
+    and x4, x3, #15
+    mov x6, #2
+    mov x7, #0x800
+    b full_decode_continue
+full_decode_two:
+    and x4, x3, #31
+    mov x6, #1
+    mov x7, #128
+full_decode_continue:
+    mov x5, x2
+full_decode_next:
+    cmp x5, x1
+    b.hs full_decode_invalid
+    ldrb w8, [x5]
+    and x0, x8, #0xc0
+    cmp x0, #0x80
+    b.ne full_decode_invalid
+    add x5, x5, #1
+    lsl x4, x4, #6
+    and x8, x8, #63
+    orr x4, x4, x8
+    sub x6, x6, #1
+    cbnz x6, full_decode_next
+    cmp x4, x7
+    b.lo full_decode_invalid
+    mov x0, #0x110000
+    cmp x4, x0
+    b.hs full_decode_invalid
+    mov x0, #0xd800
+    cmp x4, x0
+    b.lo full_decode_done
+    mov x0, #0xe000
+    cmp x4, x0
+    b.lo full_decode_invalid
+full_decode_done:
+    mov x0, x4
+    mov x1, x5
+    ret
+full_decode_ascii:
+    mov x0, x3
+    mov x1, x2
+    ret
+full_decode_invalid:
     mov x0, #0xfffd
-full_utf8_emit:
-    strh w0, [x25]
-    add x25, x25, #2
-    add x26, x26, #1
-    b full_utf8_next
-full_utf8_done:
-    strh wzr, [x25]
-    str x26, [x21, #8]
-    mov x0, x21
-    ldp x29, x30, [sp, #48]
-    ldp x26, x27, [sp, #32]
-    ldp x21, x25, [sp, #16]
-    ldp x19, x20, [sp], #64
+    mov x1, x2
     ret
 
-// Print a Unicode scalar as UTF8. Isolated surrogates become U+FFFD.
-unicode_put:
+// x0 pointer,x1 end -> count. Preserves x19..x28, like all string helpers.
+utf8_count:
+    stp x19, x20, [sp, #-32]!
+    stp x21, x30, [sp, #16]
+    mov x19, x0
+    mov x20, x1
+    mov x21, #0
+full_count_next:
+    cmp x19, x20
+    b.hs full_count_done
+    mov x0, x19
+    mov x1, x20
+    bl utf8_decode
+    mov x19, x1
+    add x21, x21, #1
+    b full_count_next
+full_count_done:
+    mov x0, x21
+    ldp x21, x30, [sp, #16]
+    ldp x19, x20, [sp], #32
+    ret
+string_point_length:
+    ldr x1, [x0, #8]
+    add x0, x0, #16
+    add x1, x0, x1
+    b utf8_count
+
+// x0 string,x1 code-point index -> byte offset, clamped to [0, byte length].
+string_point_offset:
+    stp x19, x20, [sp, #-48]!
+    stp x21, x25, [sp, #16]
+    stp x29, x30, [sp, #32]
+    add x19, x0, #16
+    ldr x20, [x0, #8]
+    add x20, x19, x20
+    mov x21, x19
+    mov x25, x1
+    cmp x25, #0
+    b.le full_offset_done
+full_offset_next:
+    cmp x21, x20
+    b.hs full_offset_done
+    mov x0, x21
+    mov x1, x20
+    bl utf8_decode
+    mov x21, x1
+    sub x25, x25, #1
+    cbnz x25, full_offset_next
+full_offset_done:
+    sub x0, x21, x19
+    ldp x29, x30, [sp, #32]
+    ldp x21, x25, [sp, #16]
+    ldp x19, x20, [sp], #48
+    ret
+// x0 string,x1 code-point index -> one scalar string, or 0 if missing.
+string_point_at:
+    cmp x1, #0
+    b.lt full_point_missing
     stp x19, x30, [sp, #-16]!
     mov x19, x0
-    cmp x19, #128
-    b.lo full_unicode_last
-    cmp x19, #0x800
-    b.lo full_unicode_two
-    mov x1, #0x10000
-    cmp x19, x1
-    b.lo full_unicode_three
-    lsr x0, x19, #18
-    orr x0, x0, #0xf0
-    bl uart_putc
-    lsr x0, x19, #12
-    and x0, x0, #63
-    orr x0, x0, #128
-    bl uart_putc
-    b full_unicode_two_tail
-full_unicode_three:
-    lsr x0, x19, #12
-    orr x0, x0, #0xe0
-    bl uart_putc
-    b full_unicode_two_tail
-full_unicode_two:
-    lsr x0, x19, #6
-    orr x0, x0, #0xc0
-    bl uart_putc
-    b full_unicode_last_tail
-full_unicode_two_tail:
-    lsr x0, x19, #6
-    and x0, x0, #63
-    orr x0, x0, #128
-    bl uart_putc
-full_unicode_last_tail:
-    and x19, x19, #63
-    orr x19, x19, #128
-full_unicode_last:
-    mov x0, x19
-    bl uart_putc
+    bl string_point_offset
+    ldr x1, [x19, #8]
+    cmp x0, x1
+    b.hs full_point_at_missing
+    add x19, x19, #16
+    add x1, x19, x1
+    add x0, x19, x0
+    bl utf8_decode
+    bl string_from_codepoint
     ldp x19, x30, [sp], #16
+    ret
+full_point_at_missing:
+    ldp x19, x30, [sp], #16
+full_point_missing:
+    mov x0, #0
+    ret
+
+// x0 scalar -> UTF8 string. Invalid scalar values become U+FFFD.
+string_from_codepoint:
+    stp x29, x30, [sp, #-32]!
+    cmp x0, #0
+    b.lt full_codepoint_invalid
+    mov x1, #0x110000
+    cmp x0, x1
+    b.hs full_codepoint_invalid
+    mov x1, #0xd800
+    cmp x0, x1
+    b.lo full_codepoint_valid
+    mov x1, #0xe000
+    cmp x0, x1
+    b.hs full_codepoint_valid
+full_codepoint_invalid:
+    mov x0, #0xfffd
+full_codepoint_valid:
+    add x3, sp, #16
+    mov x1, #1
+    cmp x0, #128
+    b.lo full_codepoint_last
+    cmp x0, #0x800
+    b.lo full_codepoint_two
+    cmp x0, #0x10000
+    b.lo full_codepoint_three
+    lsr x2, x0, #18
+    orr x2, x2, #0xf0
+    strb w2, [x3]
+    add x3, x3, #1
+    add x1, x1, #1
+    b full_codepoint_three_tail
+full_codepoint_three:
+    lsr x2, x0, #12
+    orr x2, x2, #0xe0
+    b full_codepoint_store_three
+full_codepoint_three_tail:
+    lsr x2, x0, #12
+    and x2, x2, #63
+    orr x2, x2, #128
+full_codepoint_store_three:
+    strb w2, [x3]
+    add x3, x3, #1
+    add x1, x1, #1
+    b full_codepoint_two_tail
+full_codepoint_two:
+    lsr x2, x0, #6
+    orr x2, x2, #0xc0
+    b full_codepoint_store_two
+full_codepoint_two_tail:
+    lsr x2, x0, #6
+    and x2, x2, #63
+    orr x2, x2, #128
+full_codepoint_store_two:
+    strb w2, [x3]
+    add x3, x3, #1
+    add x1, x1, #1
+    and x0, x0, #63
+    orr x0, x0, #128
+full_codepoint_last:
+    strb w0, [x3]
+    add x0, sp, #16
+    bl string_new
+    ldp x29, x30, [sp], #32
     ret
 print_string:
     stp x19, x20, [sp, #-32]!
@@ -289,39 +355,10 @@ print_string:
     add x19, x0, #16
 full_print_string_next:
     cbz x20, full_print_string_done
-    ldrh w0, [x19]
-    add x19, x19, #2
+    ldrb w0, [x19]
+    bl uart_putc
+    add x19, x19, #1
     sub x20, x20, #1
-    mov x1, #0xd800
-    cmp x0, x1
-    b.lo full_print_string_emit
-    mov x1, #0xe000
-    cmp x0, x1
-    b.hs full_print_string_emit
-    mov x1, #0xdc00
-    cmp x0, x1
-    b.hs full_print_string_invalid
-    cbz x20, full_print_string_invalid
-    ldrh w2, [x19]
-    cmp x2, x1
-    b.lo full_print_string_invalid
-    mov x3, #0xe000
-    cmp x2, x3
-    b.hs full_print_string_invalid
-    sub x2, x2, x1
-    mov x1, #0xd800
-    sub x0, x0, x1
-    lsl x0, x0, #10
-    add x0, x0, x2
-    mov x1, #0x10000
-    add x0, x0, x1
-    add x19, x19, #2
-    sub x20, x20, #1
-    b full_print_string_emit
-full_print_string_invalid:
-    mov x0, #0xfffd
-full_print_string_emit:
-    bl unicode_put
     b full_print_string_next
 full_print_string_done:
     ldp x29, x30, [sp, #16]
@@ -521,7 +558,7 @@ property_index:
     cmp x1, #10
     b.hi full_index_no
     add x2, x0, #16
-    ldrh w3, [x2]
+    ldrb w3, [x2]
     cmp w3, #48
     b.ne full_index_loop_start
     cmp x1, #1
@@ -531,7 +568,7 @@ full_index_loop_start:
     mov x4, #10
 full_index_loop:
     cbz x1, full_index_check
-    ldrh w3, [x2]
+    ldrb w3, [x2]
     cmp w3, #48
     b.lo full_index_no
     cmp w3, #57
@@ -539,7 +576,7 @@ full_index_loop:
     sub x3, x3, #48
     mul x0, x0, x4
     add x0, x0, x3
-    add x2, x2, #2
+    add x2, x2, #1
     sub x1, x1, #1
     b full_index_loop
 full_index_check:
@@ -603,13 +640,10 @@ full_get_numeric_index:
     b.eq full_get_array_index
     cmp x1, #1
     b.ne full_get_missing
-    ldr x1, [x19, #8]
-    cmp x21, x1
-    b.hs full_get_missing
-    add x0, x19, #16
-    add x0, x0, x21, lsl #1
-    mov x1, #1
-    bl string_new
+    mov x0, x19
+    mov x1, x21
+    bl string_point_at
+    cbz x0, full_get_missing
     b full_get_done
 full_get_array_index:
     ldr x1, [x19, #8]
@@ -630,8 +664,12 @@ full_get_length:
     b.eq full_get_string_length
     cmp x1, #3
     b.ne full_get_missing
-full_get_string_length:
     ldr x0, [x19, #8]
+    b full_get_length_box
+full_get_string_length:
+    mov x0, x19
+    bl string_point_length
+full_get_length_box:
     bl number_from_int
     b full_get_done
 full_get_function_length:
@@ -949,8 +987,7 @@ full_string_array_allocate:
     mov x1, #0x10000000
     cmp x26, x1
     b.hs fatal_heap
-    lsl x0, x26, #1
-    add x0, x0, #18
+    add x0, x26, #17
     bl heap_alloc
     mov x27, x0
     mov x1, #1
@@ -963,25 +1000,25 @@ full_string_array_join:
     b.hs full_string_array_end
     cbz x25, full_string_array_load
     mov x1, #44
-    strh w1, [x28]
-    add x28, x28, #2
+    strb w1, [x28]
+    add x28, x28, #1
 full_string_array_load:
     ldr x0, [x21, x25, lsl #3]
     ldr x1, [x0, #8]
     add x0, x0, #16
 full_string_array_copy:
     cbz x1, full_string_array_copied
-    ldrh w2, [x0]
-    strh w2, [x28]
-    add x0, x0, #2
-    add x28, x28, #2
+    ldrb w2, [x0]
+    strb w2, [x28]
+    add x0, x0, #1
+    add x28, x28, #1
     sub x1, x1, #1
     b full_string_array_copy
 full_string_array_copied:
     add x25, x25, #1
     b full_string_array_join
 full_string_array_end:
-    strh wzr, [x28]
+    strb wzr, [x28]
     ldp x1, x2, [sp], #16
     adr x1, stringify_active
     str x2, [x1]

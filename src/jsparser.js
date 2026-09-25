@@ -312,7 +312,7 @@ scope.eval$(`// REPL adapters for the upstream-derived FormulaCompiler.
   text 0 nil compiler .ignore PStream
   [ compiler .ignore opt compiler .start ] 1 seq1 () :result
   result
-    { | result .pos text len =
+    { | result .pos text sourceLen =
       { | [ 'block result .value ] false __js$jsValidStatement
         { | result .value false __js$jsEmitStatements }
         { | false }

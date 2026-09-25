@@ -227,7 +227,7 @@ num_bn_divsmall_end:
 num_bn_divsmall_done:
     ret
 
-// ECMAScript WhiteSpace + LineTerminator UTF16 set.
+// ECMAScript WhiteSpace + LineTerminator scalar set.
 num_is_space:
     cmp x0, #32
     b.eq num_space_yes
@@ -303,17 +303,21 @@ number_parse:
 num_parse_ws:
     cmp x27, x26
     b.hs num_parse_empty
-    ldrh w0, [x25, x27, lsl #1]
+    add x0, x25, x27
+    add x1, x25, x26
+    bl utf8_decode
+    str x1, [sp, #3200]
     bl num_is_space
     cbz x0, num_parse_sign
-    add x27, x27, #1
+    ldr x0, [sp, #3200]
+    sub x27, x0, x25
     b num_parse_ws
 num_parse_empty:
     ldr x0, [sp, #3120]
     cbz x0, num_parse_nan
     b num_parse_zero
 num_parse_sign:
-    ldrh w0, [x25, x27, lsl #1]
+    ldrb w0, [x25, x27]
     cmp w0, #45
     b.ne num_parse_plus
     mov x1, #1
@@ -336,7 +340,7 @@ num_parse_inf_loop:
     b.eq num_parse_inf_found
     cmp x2, x26
     b.hs num_parse_radix
-    ldrh w5, [x25, x2, lsl #1]
+    ldrb w5, [x25, x2]
     ldrb w6, [x3, x4]
     cmp w5, w6
     b.ne num_parse_radix
@@ -354,11 +358,11 @@ num_parse_radix:
     add x0, x27, #2
     cmp x0, x26
     b.hi num_parse_decimal
-    ldrh w0, [x25, x27, lsl #1]
+    ldrb w0, [x25, x27]
     cmp w0, #48
     b.ne num_parse_decimal
     add x0, x27, #1
-    ldrh w0, [x25, x0, lsl #1]
+    ldrb w0, [x25, x0]
     orr w0, w0, #32
     mov x28, #16
     cmp w0, #120
@@ -377,7 +381,7 @@ num_parse_radix_start:
 num_parse_radix_loop:
     cmp x27, x26
     b.hs num_parse_radix_end
-    ldrh w2, [x25, x27, lsl #1]
+    ldrb w2, [x25, x27]
     sub x2, x2, #48
     cmp x2, #9
     b.ls num_parse_radix_digit
@@ -415,7 +419,7 @@ num_parse_decimal:
 num_parse_decimal_loop:
     cmp x27, x26
     b.hs num_parse_decimal_end
-    ldrh w2, [x25, x27, lsl #1]
+    ldrb w2, [x25, x27]
     cmp w2, #46
     b.ne num_parse_decimal_digit
     ldr x0, [sp, #3176]
@@ -461,7 +465,7 @@ num_parse_decimal_end:
     cbz x0, num_parse_nan
     cmp x27, x26
     b.hs num_parse_validate
-    ldrh w0, [x25, x27, lsl #1]
+    ldrb w0, [x25, x27]
     orr w0, w0, #32
     cmp w0, #101
     b.ne num_parse_validate
@@ -472,7 +476,7 @@ num_parse_decimal_end:
     mov x9, #0
     cmp x27, x26
     b.hs num_parse_exp_rollback
-    ldrh w0, [x25, x27, lsl #1]
+    ldrb w0, [x25, x27]
     cmp w0, #45
     b.ne num_parse_exp_plus
     mov x7, #1
@@ -485,7 +489,7 @@ num_parse_exp_plus:
 num_parse_exp_loop:
     cmp x27, x26
     b.hs num_parse_exp_end
-    ldrh w0, [x25, x27, lsl #1]
+    ldrb w0, [x25, x27]
     sub x0, x0, #48
     cmp x0, #9
     b.hi num_parse_exp_end
@@ -513,10 +517,14 @@ num_parse_validate:
 num_parse_validate_loop:
     cmp x27, x26
     b.hs num_parse_valid
-    ldrh w0, [x25, x27, lsl #1]
+    add x0, x25, x27
+    add x1, x25, x26
+    bl utf8_decode
+    str x1, [sp, #3200]
     bl num_is_space
     cbz x0, num_parse_nan
-    add x27, x27, #1
+    ldr x0, [sp, #3200]
+    sub x27, x0, x25
     b num_parse_validate_loop
 num_parse_valid:
     cmp x28, #1
@@ -821,7 +829,7 @@ num_format_candidate_ready:
     str x28, [sp, #3928] // nearest coefficient
     str xzr, [sp, #3936] // candidate stage
 num_format_try_candidate:
-    // Form <coefficient>e<signed exponent> in UTF16 scratch object.
+    // Form <coefficient>e<signed exponent> in a UTF8 byte-string scratch object.
     add x0, sp, #3456
     mov x1, #1
     str x1, [x0]
@@ -842,17 +850,17 @@ num_format_coeff_digits:
 num_format_coeff_copy:
     sub x3, x3, #1
     ldrb w1, [x5, x3]
-    strh w1, [x6, x7, lsl #1]
+    strb w1, [x6, x7]
     add x7, x7, #1
     cbnz x3, num_format_coeff_copy
     mov x1, #101
-    strh w1, [x6, x7, lsl #1]
+    strb w1, [x6, x7]
     add x7, x7, #1
     ldr x1, [sp, #3920]
     cmp x1, #0
     b.ge num_format_exp_abs
     mov x2, #45
-    strh w2, [x6, x7, lsl #1]
+    strb w2, [x6, x7]
     add x7, x7, #1
     neg x1, x1
 num_format_exp_abs:
@@ -869,9 +877,10 @@ num_format_exp_digits:
 num_format_exp_copy:
     sub x3, x3, #1
     ldrb w1, [x5, x3]
-    strh w1, [x6, x7, lsl #1]
+    strb w1, [x6, x7]
     add x7, x7, #1
     cbnz x3, num_format_exp_copy
+    strb wzr, [x6, x7]
     str x7, [x0, #8]
     mov x1, #1
     bl number_parse
@@ -927,7 +936,7 @@ num_format_final_digit_loop:
     ldr x0, [sp, #3904]
     cbz x0, num_format_choose
     mov x0, #45
-    strh w0, [x19, x27, lsl #1]
+    strb w0, [x19, x27]
     add x27, x27, #1
 num_format_choose:
     cmp x26, #0
@@ -941,13 +950,13 @@ num_format_fixed_loop:
     cmp x28, x26
     b.ne num_format_fixed_digit
     mov x0, #46
-    strh w0, [x19, x27, lsl #1]
+    strb w0, [x19, x27]
     add x27, x27, #1
 num_format_fixed_digit:
     sub x0, x25, x28
     sub x0, x0, #1
     ldrb w0, [x20, x0]
-    strh w0, [x19, x27, lsl #1]
+    strb w0, [x19, x27]
     add x27, x27, #1
     add x28, x28, #1
     b num_format_fixed_loop
@@ -955,7 +964,7 @@ num_format_fixed_zeroes:
     cmp x28, x26
     b.ge num_format_finish
     mov x0, #48
-    strh w0, [x19, x27, lsl #1]
+    strb w0, [x19, x27]
     add x27, x27, #1
     add x28, x28, #1
     b num_format_fixed_zeroes
@@ -964,43 +973,43 @@ num_format_small:
     cmp x26, x0
     b.le num_format_scientific
     mov x0, #48
-    strh w0, [x19, x27, lsl #1]
+    strb w0, [x19, x27]
     add x27, x27, #1
     mov x0, #46
-    strh w0, [x19, x27, lsl #1]
+    strb w0, [x19, x27]
     add x27, x27, #1
 num_format_leading_zeroes:
     cbz x26, num_format_fraction_digits
     mov x0, #48
-    strh w0, [x19, x27, lsl #1]
+    strb w0, [x19, x27]
     add x27, x27, #1
     add x26, x26, #1
     b num_format_leading_zeroes
 num_format_fraction_digits:
     sub x25, x25, #1
     ldrb w0, [x20, x25]
-    strh w0, [x19, x27, lsl #1]
+    strb w0, [x19, x27]
     add x27, x27, #1
     cbnz x25, num_format_fraction_digits
     b num_format_finish
 num_format_scientific:
     sub x25, x25, #1
     ldrb w0, [x20, x25]
-    strh w0, [x19, x27, lsl #1]
+    strb w0, [x19, x27]
     add x27, x27, #1
     cbz x25, num_format_scientific_exp
     mov x0, #46
-    strh w0, [x19, x27, lsl #1]
+    strb w0, [x19, x27]
     add x27, x27, #1
 num_format_scientific_digits:
     sub x25, x25, #1
     ldrb w0, [x20, x25]
-    strh w0, [x19, x27, lsl #1]
+    strb w0, [x19, x27]
     add x27, x27, #1
     cbnz x25, num_format_scientific_digits
 num_format_scientific_exp:
     mov x0, #101
-    strh w0, [x19, x27, lsl #1]
+    strb w0, [x19, x27]
     add x27, x27, #1
     sub x26, x26, #1
     mov x0, #43
@@ -1009,7 +1018,7 @@ num_format_scientific_exp:
     mov x0, #45
     neg x26, x26
 num_format_scientific_sign:
-    strh w0, [x19, x27, lsl #1]
+    strb w0, [x19, x27]
     add x27, x27, #1
     mov x25, #0
     mov x2, #10
@@ -1024,7 +1033,7 @@ num_format_scientific_exp_digits:
 num_format_scientific_exp_copy:
     sub x25, x25, #1
     ldrb w0, [x20, x25]
-    strh w0, [x19, x27, lsl #1]
+    strb w0, [x19, x27]
     add x27, x27, #1
     cbnz x25, num_format_scientific_exp_copy
 num_format_finish:
@@ -1035,7 +1044,7 @@ num_format_finish:
 num_format_zero:
     add x19, sp, #3600
     mov x0, #48
-    strh w0, [x19]
+    strb w0, [x19]
     mov x27, #1
     b num_format_finish
 num_format_nan:

@@ -168,16 +168,17 @@ scope.eval$(`
 } ::__som$send
 
 { text let 0 :i false :character |
-  [ { | i text len < } { |
-    text i charAt :character
-    character 92 charCode = i 1 + text len < & { |
-      i++ text i charAt :character
+  [ { | i text sourceLen < } { |
+    text i sourceCharAt :character
+    text i sourceNext :i
+    character 92 charCode = i text sourceLen < & { |
+      text i sourceCharAt :character text i sourceNext :i
       character switch
         'n { | nl } 'r { | cr } 't { | tab } 'b { | 8 charCode }
         'f { | 12 charCode } '0 { | 0 charCode }
         { | character }
       end ()
-    } { | character } ifelse i++
+    } { | character } ifelse
   } while ] join
 } ::__som$decode
 
@@ -219,10 +220,11 @@ scope.eval$(`
 
 // Source generation uses reserved helper names, preserving ordinary shared globals.
 { name | [ 'input 'ip 'readChar 'readSym 'match 'evalSym 'parseFloat_ '__proto__ ] name indexOf -1 > { | " __js$user$" name + } { | name } ifelse } ::__som$name
-{ text |
-  [ " [ " 0 text len 1 - { i |
-    text i charAt 34 charCode = { | " 34 __som$charCode " } { | [ 34 charCode "  " text i charAt 34 charCode "  " ] join } ifelse
-  } for " ] __som$join " ] join
+{ text let 0 :i |
+  [ " [ " { | i text sourceLen < } { |
+    text i sourceCharAt 34 charCode = { | " 34 __som$charCode " } { | [ 34 charCode "  " text i sourceCharAt 34 charCode "  " ] join } ifelse
+    text i sourceNext :i
+  } while " ] __som$join " ] join
 } ::__som$quote
 0 :__som$nextReturn
 { | '__som$nextReturn ?? 1 + :__som$nextReturn " __som$return" '__som$nextReturn ?? + } ::__som$returnName
@@ -292,13 +294,13 @@ scope.eval$(`
   text 0 nil compiler .ignore PStream [ compiler .ignore opt ] 0 seq1 () :start
   start compiler .program () :result
   result
-    { | result .pos text len != { |
+    { | result .pos text sourceLen != { |
       result .value :classes result compiler .blockContents () :result
       result { | [ 'combined classes result .value ] result .:value :result } if
     } if }
     { | start compiler .blockContents opt () :result }
   ifelse
-  result { | result .pos text len = { | result .value false __som$valid { | result .value { | result .value [ ] false " " __som$emit } { | " " } ifelse } { | false } ifelse } { | false } ifelse } { | false } ifelse
+  result { | result .pos text sourceLen = { | result .value false __som$valid { | result .value { | result .value [ ] false " " __som$emit } { | " " } ifelse } { | false } ifelse } { | false } ifelse } { | false } ifelse
 } ::somCompile
 { source let source somCompile :code | code string? { | code eval } { | " Error: invalid or unsupported SOM source" print } ifelse } ::somEval
 `);

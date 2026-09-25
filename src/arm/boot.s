@@ -9,6 +9,12 @@ _start:
     mov x22, #0x40800000
     mov x23, #0x41000000
     mov x24, #0x48000000
+    mov x0, #65536
+    bl heap_alloc
+    adr x1, full_input_buffer
+    str x0, [x1]
+    adr x0, full_skip_lf
+    str xzr, [x0]
     adr x0, full_boot_complete
     str xzr, [x0]
     adr x0, stringify_active
@@ -82,24 +88,29 @@ full_repl_prompt:
     cbnz x2, full_repl_source
     // Exact terminal lines only: pasted text always reaches the reader.
     adr x0, full_input_buffer
+    ldr x0, [x0]
     adr x1, full_command_t0
     bl full_ascii_equal
     cbnz x0, full_choose_t0
     adr x0, full_input_buffer
+    ldr x0, [x0]
     adr x1, full_command_js
     bl full_ascii_equal
     cbnz x0, full_choose_js
     adr x0, full_input_buffer
+    ldr x0, [x0]
     adr x1, full_command_som
     bl full_ascii_equal
     cbnz x0, full_choose_som
     adr x0, full_input_buffer
+    ldr x0, [x0]
     adr x1, full_command_help
     bl full_ascii_equal
     cbnz x0, full_show_help
 full_repl_source:
     mov x1, x20
     adr x0, full_input_buffer
+    ldr x0, [x0]
     bl string_from_utf8
     mov x19, x22
     adr x1, full_reader
@@ -156,7 +167,7 @@ full_boot_failed:
     adr x0, full_boot_failure_message
     b fatal_halt
 full_boot_banner:
-    .asciz "\r\nTURTLES / AArch64 bare metal\r\nNative T0 compiler + VM | binary64 | UTF-16 | no C\r\nMonotonic arena and heap: exhaustion HALTS until reboot.\r\nReaders: :t0 :js :som | :help\r\nMultiline input: :paste, source lines, then :end (:cancel to discard).\r\n"
+    .asciz "\r\nTURTLES / AArch64 bare metal\r\nNative T0 compiler + VM | binary64 | UTF-8 | no C\r\nMonotonic arena and heap: exhaustion HALTS until reboot.\r\nReaders: :t0 :js :som | :help\r\nMultiline input: :paste, source lines, then :end (:cancel to discard).\r\n"
 full_ready_message: .asciz "Raw T0 REPL ready.\r\n"
 full_prompt_t0: .asciz "t0> "
 full_prompt_js: .asciz "js> "
@@ -178,4 +189,4 @@ full_boot_complete:
     .quad 0
 full_reader: .quad 0
 full_input_buffer:
-    .space 65536
+    .quad 0
